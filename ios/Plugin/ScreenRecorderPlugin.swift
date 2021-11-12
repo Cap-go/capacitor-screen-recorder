@@ -9,10 +9,12 @@ import Capacitor
 public class ScreenRecorderPlugin: CAPPlugin {
     private let implementation = ScreenRecorder()
 
-    @objc func echo(_ call: CAPPluginCall) {
-        let value = call.getString("value") ?? ""
-        call.resolve([
-            "value": implementation.echo(value)
-        ])
+    @objc func start(_ call: CAPPluginCall) {
+        implementation.start()
+        call.resolve()
+    }
+    @objc func stop(_ call: CAPPluginCall) {
+        implementation.stop()
+        call.resolve()
     }
 }

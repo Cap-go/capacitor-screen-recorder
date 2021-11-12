@@ -1,3 +1,12 @@
 export interface ScreenRecorderPlugin {
-  echo(options: { value: string }): Promise<{ value: string }>;
+  /**
+   * start the recording
+   *
+   */
+  start(): Promise<void>;
+  /**
+   * stop the recording
+   *
+   */
+  stop(): Promise<void>;
 }

@@ -5,8 +5,10 @@ import type { ScreenRecorderPlugin } from './definitions';
 export class ScreenRecorderWeb
   extends WebPlugin
   implements ScreenRecorderPlugin {
-  async echo(options: { value: string }): Promise<{ value: string }> {
-    console.log('ECHO', options);
-    return options;
+  async start(): Promise<void> {
+      throw new Error("Method not implemented.");
+  }
+  async stop(): Promise<void> {
+      throw new Error("Method not implemented.");
   }
 }

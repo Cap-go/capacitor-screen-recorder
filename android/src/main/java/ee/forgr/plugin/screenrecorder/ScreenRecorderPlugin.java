@@ -12,11 +12,14 @@ public class ScreenRecorderPlugin extends Plugin {
     private ScreenRecorder implementation = new ScreenRecorder();
 
     @PluginMethod
-    public void echo(PluginCall call) {
-        String value = call.getString("value");
-
-        JSObject ret = new JSObject();
-        ret.put("value", implementation.echo(value));
-        call.resolve(ret);
+    public void start(PluginCall call) {
+        implementation.start();
+        call.resolve();
+    }
+    
+    @PluginMethod
+    public void stop(PluginCall call) {
+        implementation.stop();
+        call.resolve();
     }
 }

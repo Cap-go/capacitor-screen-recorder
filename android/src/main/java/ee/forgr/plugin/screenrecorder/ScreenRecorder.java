@@ -3,9 +3,15 @@ package ee.forgr.plugin.screenrecorder;
 import android.util.Log;
 
 public class ScreenRecorder {
+    val recorder = ScrCast.use(activity)
 
-    public String echo(String value) {
-        Log.i("Echo", value);
-        return value;
+    public void start() {
+        Log.i("start");
+        recorder.record();
+    }
+
+    public void stop() {
+        Log.i("stop");
+        recorder.stopRecording();
     }
 }
