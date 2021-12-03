@@ -11,21 +11,23 @@ public class ScreenRecorderPlugin: CAPPlugin {
     private let implementation = ScreenRecorder()
 
     @objc func start(_ call: CAPPluginCall) {
-        var foundError = false
-        implementation.startRecording(saveToCameraRoll: true, errorHandler: { error in
-            debugPrint("Error when recording \(error)")
-            foundError = true
+        implementation.startRecording(saveToCameraRoll: true, handler: { error in
+            if let error = error {
+                debugPrint("Error when start recording \(error)")
+                call.reject("Cannot start recording")
+            } else {
+                call.resolve()
+            }
         })
-        if (foundError) {
-            call.resolve()
-        } else {
-            call.reject("Cannot start recording")
-        }
     }
     @objc func stop(_ call: CAPPluginCall) {
-        implementation.stoprecording(errorHandler: { error in
-            debugPrint("Error when stop recording \(error)")
+        implementation.stoprecording(handler: { error in
+            if let error = error {
+                debugPrint("Error when stop recording \(error)")
+                call.reject("Cannot stop recording")
+            } else {
+                call.resolve()
+            }
         })
-        call.resolve()
     }
 }
