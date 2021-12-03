@@ -1,6 +1,5 @@
 import Foundation
 import Capacitor
-import Wyler
 
 /**
  * Please read the Capacitor iOS Plugin Development Guide

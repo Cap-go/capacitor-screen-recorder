@@ -1,6 +1,6 @@
 {
   "name": "capacitor-screen-recorder",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Record device's screen",
   "main": "dist/plugin.cjs.js",
   "module": "dist/esm/index.js",
