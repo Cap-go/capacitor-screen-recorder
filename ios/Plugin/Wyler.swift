@@ -13,6 +13,7 @@ import Photos
 
 enum ScreenRecorderError: Error {
     case notAvailable
+    case photoLibraryAccessNotGranted
 }
 
 final public class ScreenRecorder {
@@ -137,12 +138,24 @@ final public class ScreenRecorder {
         } else {
             self.videoWriterInput?.markAsFinished()
             self.videoWriter?.finishWriting {
-              self.saveVideoToCameraRoll(handler: handler)
+              self.saveVideoToCameraRollAfterAuthorized(handler: handler)
             }
         }
     })
+  }
 
-
+  private func saveVideoToCameraRollAfterAuthorized(handler: @escaping (Error?) -> Void) {
+    if PHPhotoLibrary.authorizationStatus() == .authorized {
+        self.saveVideoToCameraRoll(handler: handler)
+    } else {
+        PHPhotoLibrary.requestAuthorization({ (status) in
+            if status == .authorized {
+                self.saveVideoToCameraRoll(handler: handler)
+            } else {
+              handler(WylerError.photoLibraryAccessNotGranted)
+          }
+        })
+    }
   }
 
   private func saveVideoToCameraRoll(handler: @escaping (Error?) -> Void) {
