@@ -9,7 +9,12 @@ import dev.bmcreations.scrcast.ScrCast;
 @CapacitorPlugin(name = "ScreenRecorder")
 public class ScreenRecorderPlugin extends Plugin {
 
-    ScrCast recorder = ScrCast.use(this.bridge.getActivity());
+    private ScrCast recorder;
+
+    @Override
+    public void load() {
+        recorder =  ScrCast.use(this.bridge.getActivity());
+    }
 
     @PluginMethod
     public void start(PluginCall call) {
