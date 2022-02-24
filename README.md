@@ -9,6 +9,14 @@ npm install capacitor-screen-recorder
 npx cap sync
 ```
 
+## IOS
+
+Nothing special
+
+## Android
+
+increase project's minSdk version to at least 23.
+
 ## API
 
 <docgen-index>
