@@ -5,6 +5,7 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import dev.bmcreations.scrcast.ScrCast;
+import dev.bmcreations.scrcast.config.Options;
 
 @CapacitorPlugin(name = "ScreenRecorder")
 public class ScreenRecorderPlugin extends Plugin {
@@ -14,6 +15,8 @@ public class ScreenRecorderPlugin extends Plugin {
     @Override
     public void load() {
         recorder =  ScrCast.use(this.bridge.getActivity());
+        Options options = new Options();
+        recorder.updateOptions(options);
     }
 
     @PluginMethod
