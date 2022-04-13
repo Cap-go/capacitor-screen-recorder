@@ -112,22 +112,29 @@ final public class ScreenRecorder {
     guard recorder.isAvailable else {
         return handler(ScreenRecorderError.notAvailable)
     }
+    var sent = false
     recorder.startCapture(handler: { (sampleBuffer, sampleType, passedError) in
-      if let passedError = passedError {
-        handler(passedError)
-      }
+        if let passedError = passedError {
+            if (!sent) {
+                handler(passedError)
+                sent = true
+            }
+        }
 
-      switch sampleType {
-      case .video:
-        self.handleSampleBuffer(sampleBuffer: sampleBuffer)
-      case .audioApp:
-        self.add(sample: sampleBuffer, to: self.appAudioWriterInput)
-      case .audioMic:
-        self.add(sample: sampleBuffer, to: self.micAudioWriterInput)
-      default:
-        break
-      }
-      handler(nil)
+        switch sampleType {
+            case .video:
+                self.handleSampleBuffer(sampleBuffer: sampleBuffer)
+            case .audioApp:
+                self.add(sample: sampleBuffer, to: self.appAudioWriterInput)
+            case .audioMic:
+                self.add(sample: sampleBuffer, to: self.micAudioWriterInput)
+            default:
+                break
+        }
+        if (!sent) {
+            handler(nil)
+            sent = true
+        }
     })
   }
 
