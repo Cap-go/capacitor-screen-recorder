@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.2.2](https://github.com/riderx/capacitor-screen-recorder/compare/v1.2.1...v1.2.2) (2022-07-31)
+
+
+### Bug Fixes
+
+* missing file in npm ([af6a672](https://github.com/riderx/capacitor-screen-recorder/commit/af6a672edcd104d3a781e8b96cecd4fc4d8c5b03))
+
 ### [1.2.1](https://github.com/riderx/capacitor-screen-recorder/compare/v1.2.0...v1.2.1) (2022-07-27)
 
 ## 1.2.0 (2022-07-24)
