@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.2.10](https://github.com/riderx/capacitor-screen-recorder/compare/v1.2.9...v1.2.10) (2022-11-11)
+
+
+### Bug Fixes
+
+* rollup config ([1620221](https://github.com/riderx/capacitor-screen-recorder/commit/16202216267842240d3978edcabaa8806c530eb2))
+
 ### [1.2.9](https://github.com/riderx/capacitor-screen-recorder/compare/v1.2.8...v1.2.9) (2022-11-11)
 
 
