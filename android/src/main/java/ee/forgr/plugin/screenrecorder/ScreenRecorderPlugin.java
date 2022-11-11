@@ -14,7 +14,7 @@ public class ScreenRecorderPlugin extends Plugin {
 
     @Override
     public void load() {
-        recorder =  ScrCast.use(this.bridge.getActivity());
+        recorder = ScrCast.use(this.bridge.getActivity());
         Options options = new Options();
         recorder.updateOptions(options);
     }
@@ -24,7 +24,7 @@ public class ScreenRecorderPlugin extends Plugin {
         recorder.record();
         call.resolve();
     }
-    
+
     @PluginMethod
     public void stop(PluginCall call) {
         recorder.stopRecording();
