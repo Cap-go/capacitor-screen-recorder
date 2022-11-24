@@ -19,8 +19,16 @@ npx cap sync
 Nothing special
 
 ## Android
+increase project's minSdk version to 23, it's required by the dependency scrcast
 
-increase project's minSdk version to at least 23.
+### Variables
+
+This plugin will use the following project variables (defined in your app's `variables.gradle` file):
+- `$kotlinVersion` version of `org.jetbrains.kotlin:kotlin-stdlib-jdk7` (default: `1.7.21`)
+
+## Configuration
+
+No configuration required for this plugin.
 
 ## API
 
