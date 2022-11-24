@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.2.21](https://github.com/riderx/capacitor-screen-recorder/compare/v1.2.20...v1.2.21) (2022-11-24)
+
+
+### Bug Fixes
+
+* android build ([df4cc98](https://github.com/riderx/capacitor-screen-recorder/commit/df4cc980644d72a21c26b6452c54987758e727f5))
+
 ### [1.2.20](https://github.com/riderx/capacitor-screen-recorder/compare/v1.2.19...v1.2.20) (2022-11-24)
 
 
