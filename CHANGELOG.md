@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.2.15](https://github.com/riderx/capacitor-screen-recorder/compare/v1.2.14...v1.2.15) (2022-11-24)
+
+
+### Bug Fixes
+
+* kotlib version issue ([b99345e](https://github.com/riderx/capacitor-screen-recorder/commit/b99345e6e6b9a15d5a35551e6aeaadf5a943056b))
+
 ### [1.2.14](https://github.com/riderx/capacitor-screen-recorder/compare/v1.2.13...v1.2.14) (2022-11-22)
 
 ### [1.2.13](https://github.com/riderx/capacitor-screen-recorder/compare/v1.2.12...v1.2.13) (2022-11-22)
