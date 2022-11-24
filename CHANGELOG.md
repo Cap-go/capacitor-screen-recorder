@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.2.18](https://github.com/riderx/capacitor-screen-recorder/compare/v1.2.17...v1.2.18) (2022-11-24)
+
+
+### Bug Fixes
+
+* remove jcenter ([29e95e8](https://github.com/riderx/capacitor-screen-recorder/commit/29e95e806d86145f1b96b1c4282473561916f7bc))
+
 ### [1.2.17](https://github.com/riderx/capacitor-screen-recorder/compare/v1.2.16...v1.2.17) (2022-11-24)
 
 
