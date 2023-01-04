@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.2.32](https://github.com/riderx/capacitor-screen-recorder/compare/v1.2.31...v1.2.32) (2023-01-04)
+
+
+### Bug Fixes
+
+* use pnpm ([615dda8](https://github.com/riderx/capacitor-screen-recorder/commit/615dda80d638f55a1ac336767a5129227860ab0c))
+
 ### [1.2.31](https://github.com/riderx/capacitor-screen-recorder/compare/v1.2.30...v1.2.31) (2023-01-04)
 
 ### [1.2.30](https://github.com/riderx/capacitor-screen-recorder/compare/v1.2.29...v1.2.30) (2023-01-04)
