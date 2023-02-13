@@ -1,6 +1,6 @@
 {
   "name": "@capgo/capacitor-screen-recorder",
-  "version": "1.2.37",
+  "version": "1.2.38",
   "description": "Record device's screen",
   "main": "dist/plugin.cjs.js",
   "module": "dist/esm/index.js",
