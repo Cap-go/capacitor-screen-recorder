@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [3.0.0](https://github.com/riderx/capacitor-screen-recorder/compare/v1.2.53...v3.0.0) (2023-05-22)
+
+
+### ⚠ BREAKING CHANGES
+
+* capacitor 5
+
+### Features
+
+* capacitor 5 ([677d54e](https://github.com/riderx/capacitor-screen-recorder/commit/677d54e954a790a784dad6c0965f934c02502a2c))
+
+
+### Bug Fixes
+
+* ci name ([cdb16b9](https://github.com/riderx/capacitor-screen-recorder/commit/cdb16b9c01c17b466c88831ad15a6b1d04b518cd))
+
 ## [2.0.0](https://github.com/riderx/capacitor-screen-recorder/compare/v1.2.53...v2.0.0) (2023-05-22)
 
 
