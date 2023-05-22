@@ -61,10 +61,12 @@ No configuration required for this plugin.
 ### start()
 
 ```typescript
-start() => Promise<void>
+start() => any
 ```
 
 start the recording
+
+**Returns:** <code>any</code>
 
 --------------------
 
@@ -72,10 +74,12 @@ start the recording
 ### stop()
 
 ```typescript
-stop() => Promise<void>
+stop() => any
 ```
 
 stop the recording
+
+**Returns:** <code>any</code>
 
 --------------------
 
