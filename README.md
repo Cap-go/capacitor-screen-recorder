@@ -16,7 +16,7 @@ npx cap sync
 
 ## IOS
 
-Nothing special
+add NSPhotoLibraryUsageDescription in your info.plist
 
 ## Android
 increase project's minSdk version to 23, it's required by the dependency scrcast
