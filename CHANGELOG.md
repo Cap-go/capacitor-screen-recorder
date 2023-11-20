@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [8.0.9](https://github.com/riderx/capacitor-screen-recorder/compare/8.0.8...8.0.9) (2023-11-20)
+
+
+### Bug Fixes
+
+* **deps:** update dependency com.android.tools.build:gradle to v8.1.4 ([87a81ee](https://github.com/riderx/capacitor-screen-recorder/commit/87a81eed1c669d436187f12fc11d91a0bf2d09a4))
+
 ### [8.0.8](https://github.com/riderx/capacitor-screen-recorder/compare/8.0.7...8.0.8) (2023-10-09)
 
 ### [8.0.7](https://github.com/riderx/capacitor-screen-recorder/compare/8.0.6...8.0.7) (2023-10-02)
