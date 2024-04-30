@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [8.1.0](https://github.com/riderx/capacitor-screen-recorder/compare/8.0.9...8.1.0) (2024-04-30)
+
+
+### Features
+
+* capacitor 6 ([91e9afb](https://github.com/riderx/capacitor-screen-recorder/commit/91e9afbe703e7f8cdd88b1a81bea13643d108d3f))
+
+
+### Bug Fixes
+
+* build issue ([f3779a5](https://github.com/riderx/capacitor-screen-recorder/commit/f3779a55be37906cd9ae18529dcb2d51afce5cc7))
+* use last pnpm ([5f8f34d](https://github.com/riderx/capacitor-screen-recorder/commit/5f8f34de979e188f168da1f98abddb10ec11003e))
+
 ### [8.0.9](https://github.com/riderx/capacitor-screen-recorder/compare/8.0.8...8.0.9) (2023-11-20)
 
 
