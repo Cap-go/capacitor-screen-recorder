@@ -21,6 +21,13 @@ add NSPhotoLibraryUsageDescription in your info.plist
 ## Android
 increase project's minSdk version to 23, it's required by the dependency scrcast
 
+Add this permissions in your `AndroidManifest.xml`
+```xml
+  <uses-permission android:name="android.permission.CAPTURE_VIDEO_OUTPUT" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+```
+
+
 ### Variables
 
 This plugin will use the following project variables (defined in your app's `variables.gradle` file):
