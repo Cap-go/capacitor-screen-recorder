@@ -2,6 +2,8 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [8.1.63](https://github.com/riderx/capacitor-screen-recorder/compare/8.1.62...8.1.63) (2024-09-30)
+
 ### [8.1.62](https://github.com/riderx/capacitor-screen-recorder/compare/8.1.61...8.1.62) (2024-09-30)
 
 ### [8.1.61](https://github.com/riderx/capacitor-screen-recorder/compare/8.1.60...8.1.61) (2024-09-30)
