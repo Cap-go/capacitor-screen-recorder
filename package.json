@@ -17,17 +17,17 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/riderx/capacitor-screen-recorder.git"
+    "url": "git+https://github.com/Cap-go/capacitor-screen-recorder.git"
   },
   "bugs": {
-    "url": "https://github.com/riderx/capacitor-screen-recorder/issues"
+    "url": "https://github.com/Cap-go/capacitor-screen-recorder/issues"
   },
   "keywords": [
     "capacitor",
     "plugin",
     "native"
   ],
- "scripts": {
+  "scripts": {
     "verify": "npm run verify:ios && npm run verify:android && npm run verify:web",
     "verify:ios": "cd ios && pod install && xcodebuild -workspace Plugin.xcworkspace -sdk iphoneos -scheme Plugin && cd ..",
     "verify:android": "cd android && ./gradlew clean build test && cd ..",
