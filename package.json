@@ -1,6 +1,6 @@
 {
   "name": "@capgo/capacitor-screen-recorder",
-  "version": "7.0.0",
+  "version": "7.1.0",
   "description": "Record device's screen",
   "main": "dist/plugin.cjs.js",
   "module": "dist/esm/index.js",
@@ -27,7 +27,7 @@
     "plugin",
     "native"
   ],
- "scripts": {
+  "scripts": {
     "verify": "npm run verify:ios && npm run verify:android && npm run verify:web",
     "verify:ios": "cd ios && pod install && xcodebuild -workspace Plugin.xcworkspace -sdk iphoneos -scheme Plugin && cd ..",
     "verify:android": "cd android && ./gradlew clean build test && cd ..",
