@@ -6,7 +6,13 @@ import Capacitor
  * here: https://capacitorjs.com/docs/plugins/ios
  */
 @objc(ScreenRecorderPlugin)
-public class ScreenRecorderPlugin: CAPPlugin {
+public class ScreenRecorderPlugin: CAPPlugin, CAPBridgedPlugin {
+    public let identifier = "ScreenRecorderPlugin"
+    public let jsName = "ScreenRecorder"
+    public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "start", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "stop", returnType: CAPPluginReturnPromise)
+    ]
     private let implementation = ScreenRecorder()
 
     @objc func start(_ call: CAPPluginCall) {
