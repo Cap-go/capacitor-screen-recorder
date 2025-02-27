@@ -72,7 +72,7 @@ No configuration required for this plugin.
 
 <docgen-index>
 
-* [`start(...)`](#start)
+* [`start()`](#start)
 * [`stop()`](#stop)
 
 </docgen-index>
@@ -80,17 +80,13 @@ No configuration required for this plugin.
 <docgen-api>
 <!--Update the source file JSDoc comments and rerun docgen to update the docs below-->
 
-### start(...)
+### start()
 
 ```typescript
-start(options?: { recordAudio?: boolean | undefined; } | undefined) => Promise<void>
+start() => Promise<void>
 ```
 
 start the recording
-
-| Param         | Type                                    | Description       |
-| ------------- | --------------------------------------- | ----------------- |
-| **`options`** | <code>{ recordAudio?: boolean; }</code> | Recording options |
 
 --------------------
 
