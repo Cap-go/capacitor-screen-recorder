@@ -3,6 +3,7 @@
     "allowUnreachableCode": false,
     "declaration": true,
     "esModuleInterop": true,
+    "inlineSources": true,
     "lib": ["dom", "es2017"],
     "module": "esnext",
     "moduleResolution": "node",
@@ -13,7 +14,9 @@
     "pretty": true,
     "sourceMap": true,
     "strict": true,
-    "target": "es2017"
+    "target": "es2017",
+    "types": ["@capacitor/core"],
+    "skipLibCheck": true,
   },
   "files": ["src/index.ts"]
 }

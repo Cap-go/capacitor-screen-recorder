@@ -19,14 +19,29 @@ npx cap sync
 add NSPhotoLibraryUsageDescription in your info.plist
 
 ## Android
-increase project's minSdk version to 23, it's required by the dependency scrcast
+increase project's minSdk version to 23, it's required by the dependency HBRecorder
 
-Add this permissions in your `AndroidManifest.xml`
+Add these permissions in your `AndroidManifest.xml`:
 ```xml
-  <uses-permission android:name="android.permission.CAPTURE_VIDEO_OUTPUT" />
-  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+<uses-permission android:name="android.permission.WRITE_INTERNAL_STORAGE" />
+<uses-permission android:name="android.permission.RECORD_AUDIO" />
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
 ```
 
+### Add JitPack Repository
+Add JitPack repository to your Android app's build.gradle (android/app/build.gradle):
+
+```gradle
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+        maven { url 'https://jitpack.io/' }
+    }
+}
+```
 
 ### Variables
 
@@ -57,7 +72,7 @@ No configuration required for this plugin.
 
 <docgen-index>
 
-* [`start()`](#start)
+* [`start(...)`](#start)
 * [`stop()`](#stop)
 
 </docgen-index>
@@ -65,13 +80,17 @@ No configuration required for this plugin.
 <docgen-api>
 <!--Update the source file JSDoc comments and rerun docgen to update the docs below-->
 
-### start()
+### start(...)
 
 ```typescript
-start() => Promise<void>
+start(options?: { recordAudio?: boolean | undefined; } | undefined) => Promise<void>
 ```
 
 start the recording
+
+| Param         | Type                                    | Description       |
+| ------------- | --------------------------------------- | ----------------- |
+| **`options`** | <code>{ recordAudio?: boolean; }</code> | Recording options |
 
 --------------------
 
