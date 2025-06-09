@@ -2,6 +2,8 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [7.1.8](https://github.com/Cap-go/capacitor-screen-recorder/compare/7.1.7...7.1.8) (2025-06-09)
+
 ### [7.1.7](https://github.com/Cap-go/capacitor-screen-recorder/compare/7.1.6...7.1.7) (2025-05-26)
 
 ### [7.1.6](https://github.com/Cap-go/capacitor-screen-recorder/compare/7.1.5...7.1.6) (2025-04-28)
