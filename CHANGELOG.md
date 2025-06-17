@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [7.1.9](https://github.com/Cap-go/capacitor-screen-recorder/compare/7.1.8...7.1.9) (2025-06-17)
+
+
+### Bug Fixes
+
+* kotlin version ([9447e03](https://github.com/Cap-go/capacitor-screen-recorder/commit/9447e0318c77f7b4c68ae8020e09998fccdb6c35))
+
 ### [7.1.8](https://github.com/Cap-go/capacitor-screen-recorder/compare/7.1.7...7.1.8) (2025-06-09)
 
 ### [7.1.7](https://github.com/Cap-go/capacitor-screen-recorder/compare/7.1.6...7.1.7) (2025-05-26)
