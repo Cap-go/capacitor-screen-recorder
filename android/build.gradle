@@ -5,7 +5,7 @@ buildscript {
         androidxEspressoCoreVersion = project.hasProperty('androidxEspressoCoreVersion') ? rootProject.ext.androidxEspressoCoreVersion : '3.6.1'
         androidxAppCompatVersion = project.hasProperty('androidxAppCompatVersion') ? rootProject.ext.androidxAppCompatVersion : '1.7.0'
         androidxCoreVersion = project.hasProperty('androidxCoreVersion') ? rootProject.ext.androidxCoreVersion : '1.15.0'
-        kotlin_version = project.hasProperty('kotlin_version') ? rootProject.ext.kotlin_version : '1.7.21'
+        kotlin_version = project.hasProperty('kotlin_version') ? rootProject.ext.kotlin_version : '1.9.25'
     }
     repositories {
         google()
