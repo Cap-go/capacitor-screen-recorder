@@ -1,6 +1,8 @@
 # Changelog
 
-All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
+All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
+
+## [7.1.13](https://github.com/Cap-go/capacitor-screen-recorder/compare/7.1.12...7.1.13) (2025-10-08)
 
 ### [7.1.12](https://github.com/Cap-go/capacitor-screen-recorder/compare/7.1.11...7.1.12) (2025-08-04)
 
