@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [7.1.17](https://github.com/Cap-go/capacitor-screen-recorder/compare/7.1.16...7.1.17) (2025-10-09)
+
+
+### Bug Fixes
+
+* switch to ios new arch ([4e46028](https://github.com/Cap-go/capacitor-screen-recorder/commit/4e46028999ad20d7c640981182f6907fbc28ba8c))
+
 ## [7.1.16](https://github.com/Cap-go/capacitor-screen-recorder/compare/7.1.15...7.1.16) (2025-10-08)
 
 ## [7.1.15](https://github.com/Cap-go/capacitor-screen-recorder/compare/7.1.14...7.1.15) (2025-10-08)
