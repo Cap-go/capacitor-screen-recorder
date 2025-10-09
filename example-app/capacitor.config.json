@@ -1,0 +1,10 @@
+{
+  "appId": "com.example.capgo.capacitor.screen.recorder",
+  "appName": "@capgo/capacitor-screen-recorder example",
+  "webDir": "dist",
+  "plugins": {
+    "SplashScreen": {
+      "launchAutoHide": false
+    }
+  }
+}
