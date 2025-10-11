@@ -1,6 +1,6 @@
 {
-  "appId": "com.example.capgo.capacitor.screen.recorder",
-  "appName": "@capgo/capacitor-screen-recorder example",
+  "appId": "app.capgo.screen.recorder",
+  "appName": "Screen Recorder Example",
   "webDir": "dist",
   "plugins": {
     "SplashScreen": {
