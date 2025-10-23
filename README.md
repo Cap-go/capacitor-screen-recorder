@@ -74,6 +74,7 @@ No configuration required for this plugin.
 
 * [`start(...)`](#start)
 * [`stop()`](#stop)
+* [`getPluginVersion()`](#getpluginversion)
 
 </docgen-index>
 
@@ -102,6 +103,19 @@ stop() => Promise<void>
 ```
 
 stop the recording
+
+--------------------
+
+
+### getPluginVersion()
+
+```typescript
+getPluginVersion() => Promise<{ version: string; }>
+```
+
+Get the native Capacitor plugin version
+
+**Returns:** <code>Promise&lt;{ version: string; }&gt;</code>
 
 --------------------
 
