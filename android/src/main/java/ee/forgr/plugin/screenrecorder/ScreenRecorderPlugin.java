@@ -10,6 +10,8 @@ import dev.bmcreations.scrcast.config.Options;
 @CapacitorPlugin(name = "ScreenRecorder")
 public class ScreenRecorderPlugin extends Plugin {
 
+    private final String PLUGIN_VERSION = "";
+
     private ScrCast recorder;
 
     @Override
@@ -29,5 +31,16 @@ public class ScreenRecorderPlugin extends Plugin {
     public void stop(PluginCall call) {
         recorder.stopRecording();
         call.resolve();
+    }
+
+    @PluginMethod
+    public void getPluginVersion(final PluginCall call) {
+        try {
+            final JSObject ret = new JSObject();
+            ret.put("version", this.PLUGIN_VERSION);
+            call.resolve(ret);
+        } catch (final Exception e) {
+            call.reject("Could not get plugin version", e);
+        }
     }
 }
