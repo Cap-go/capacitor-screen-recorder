@@ -1,5 +1,6 @@
 package ee.forgr.plugin.screenrecorder;
 
+import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
