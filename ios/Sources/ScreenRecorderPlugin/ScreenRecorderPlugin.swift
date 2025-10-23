@@ -7,7 +7,7 @@ import Capacitor
  */
 @objc(ScreenRecorderPlugin)
 public class ScreenRecorderPlugin: CAPPlugin, CAPBridgedPlugin {
-    private let PLUGIN_VERSION: String = "7.2.0"
+    private let PLUGIN_VERSION: String = "7.2.1"
     public let identifier = "ScreenRecorderPlugin"
     public let jsName = "ScreenRecorder"
     public let pluginMethods: [CAPPluginMethod] = [
