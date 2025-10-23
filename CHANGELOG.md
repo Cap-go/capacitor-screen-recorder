@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [7.2.0](https://github.com/Cap-go/capacitor-screen-recorder/compare/7.1.23...7.2.0) (2025-10-23)
+
+
+### Features
+
+* add getPluginVersion method to ScreenRecorder plugin and update workflows for changelog generation ([0b05e6f](https://github.com/Cap-go/capacitor-screen-recorder/commit/0b05e6f867ca5af40cfba698c69b37fd4857bf7c))
+
+
+### Bug Fixes
+
+* remove unnecessary content field from Discord release notification ([7929589](https://github.com/Cap-go/capacitor-screen-recorder/commit/79295899be756fd37b366a77f0ba6b353130545a))
+
 ## [7.1.23](https://github.com/Cap-go/capacitor-screen-recorder/compare/7.1.22...7.1.23) (2025-10-16)
 
 ## [7.1.22](https://github.com/Cap-go/capacitor-screen-recorder/compare/7.1.21...7.1.22) (2025-10-15)
