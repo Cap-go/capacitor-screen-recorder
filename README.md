@@ -7,6 +7,10 @@
 </div>
 Record device's screen
 
+## Documentation
+
+The most complete doc is available here: https://capgo.app/docs/plugins/screen-recorder/
+
 ## Install
 
 ```bash
