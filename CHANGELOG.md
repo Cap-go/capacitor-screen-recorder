@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [7.2.7](https://github.com/Cap-go/capacitor-screen-recorder/compare/7.2.6...7.2.7) (2025-10-29)
+
+
+### Bug Fixes
+
+* CI/CD config ([5a27d3d](https://github.com/Cap-go/capacitor-screen-recorder/commit/5a27d3dbf1f56e14d0dcc52104db05def8743b1e))
+* model github action ([5f07261](https://github.com/Cap-go/capacitor-screen-recorder/commit/5f07261d3d35ca1b492af29ca8e22cc1dc0ffc54))
+* update github action ([6463ba3](https://github.com/Cap-go/capacitor-screen-recorder/commit/6463ba317170a5ee7481137624cacfa1698d5c54))
+
 ## [7.2.6](https://github.com/Cap-go/capacitor-screen-recorder/compare/7.2.5...7.2.6) (2025-10-27)
 
 
