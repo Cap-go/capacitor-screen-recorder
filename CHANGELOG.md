@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [7.3.1](https://github.com/Cap-go/capacitor-screen-recorder/compare/7.3.0...7.3.1) (2025-10-30)
+
+
+### Bug Fixes
+
+* pluginVersion lint issue ([9587d25](https://github.com/Cap-go/capacitor-screen-recorder/commit/9587d25f5f672d93f1a4a693455fadcf84b8fc8d))
+
 ## [7.3.0](https://github.com/Cap-go/capacitor-screen-recorder/compare/7.2.7...7.3.0) (2025-10-30)
 
 
