@@ -27,7 +27,15 @@
   "keywords": [
     "capacitor",
     "plugin",
-    "native"
+    "native",
+    "screen-recorder",
+    "screen-recording",
+    "video",
+    "recording",
+    "capture",
+    "screen-capture",
+    "ios",
+    "android"
   ],
   "scripts": {
     "verify": "npm run verify:ios && npm run verify:android && npm run verify:web",

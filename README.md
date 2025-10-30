@@ -85,17 +85,27 @@ No configuration required for this plugin.
 <docgen-api>
 <!--Update the source file JSDoc comments and rerun docgen to update the docs below-->
 
+Capacitor Screen Recorder Plugin for recording the device screen.
+Allows you to capture video recordings of the screen with optional audio.
+
 ### start(...)
 
 ```typescript
 start(options?: { recordAudio?: boolean | undefined; } | undefined) => Promise<void>
 ```
 
-start the recording
+Start recording the device screen.
 
-| Param         | Type                                    | Description       |
-| ------------- | --------------------------------------- | ----------------- |
-| **`options`** | <code>{ recordAudio?: boolean; }</code> | Recording options |
+Initiates screen recording with optional audio capture. The user will be
+prompted to grant screen recording permissions if not already granted.
+On iOS, the system recording UI will be displayed. On Android, the recording
+starts immediately after permission is granted.
+
+| Param         | Type                                    | Description                       |
+| ------------- | --------------------------------------- | --------------------------------- |
+| **`options`** | <code>{ recordAudio?: boolean; }</code> | - Recording configuration options |
+
+**Since:** 1.0.0
 
 --------------------
 
@@ -106,7 +116,13 @@ start the recording
 stop() => Promise<void>
 ```
 
-stop the recording
+Stop the current screen recording.
+
+Stops the active screen recording and saves the video to the device's
+camera roll or gallery. On iOS, the system will show a preview of the
+recording. On Android, the video is saved directly to the gallery.
+
+**Since:** 1.0.0
 
 --------------------
 
@@ -117,9 +133,11 @@ stop the recording
 getPluginVersion() => Promise<{ version: string; }>
 ```
 
-Get the native Capacitor plugin version
+Get the native Capacitor plugin version.
 
 **Returns:** <code>Promise&lt;{ version: string; }&gt;</code>
+
+**Since:** 1.0.0
 
 --------------------
 
