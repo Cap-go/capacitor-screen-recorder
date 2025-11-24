@@ -16,7 +16,7 @@
     "CapgoCapacitorScreenRecorder.podspec"
   ],
   "author": "Martin Donadieu",
-  "license": "MIT",
+  "license": "MPL-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Cap-go/capacitor-screen-recorder.git"
