@@ -24,6 +24,7 @@
   "bugs": {
     "url": "https://github.com/Cap-go/capacitor-screen-recorder/issues"
   },
+  "homepage": "https://capgo.app/docs/plugins/screen-recorder/",
   "keywords": [
     "capacitor",
     "plugin",
