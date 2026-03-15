@@ -90,6 +90,7 @@ No configuration required for this plugin.
 * [`start(...)`](#start)
 * [`stop()`](#stop)
 * [`getPluginVersion()`](#getpluginversion)
+* [Interfaces](#interfaces)
 
 </docgen-index>
 
@@ -102,7 +103,7 @@ Allows you to capture video recordings of the screen with optional audio.
 ### start(...)
 
 ```typescript
-start(options?: { recordAudio?: boolean | undefined; } | undefined) => Promise<void>
+start(options?: ScreenRecorderStartOptions | undefined) => Promise<void>
 ```
 
 Start recording the device screen.
@@ -112,9 +113,9 @@ prompted to grant screen recording permissions if not already granted.
 On iOS, the system recording UI will be displayed. On Android, the recording
 starts immediately after permission is granted.
 
-| Param         | Type                                    | Description                       |
-| ------------- | --------------------------------------- | --------------------------------- |
-| **`options`** | <code>{ recordAudio?: boolean; }</code> | - Recording configuration options |
+| Param         | Type                                                                              | Description                       |
+| ------------- | --------------------------------------------------------------------------------- | --------------------------------- |
+| **`options`** | <code><a href="#screenrecorderstartoptions">ScreenRecorderStartOptions</a></code> | - Recording configuration options |
 
 **Since:** 1.0.0
 
@@ -151,5 +152,34 @@ Get the native Capacitor plugin version.
 **Since:** 1.0.0
 
 --------------------
+
+
+### Interfaces
+
+
+#### ScreenRecorderStartOptions
+
+Options used when starting a recording.
+
+| Prop              | Type                                                                              | Description                                          | Since  |
+| ----------------- | --------------------------------------------------------------------------------- | ---------------------------------------------------- | ------ |
+| **`recordAudio`** | <code>boolean</code>                                                              | Whether to record audio along with the screen video. | 1.0.0  |
+| **`video`**       | <code><a href="#screenrecordervideooptions">ScreenRecorderVideoOptions</a></code> | Android-only video recorder options.                 | 8.2.24 |
+
+
+#### ScreenRecorderVideoOptions
+
+Android-specific video tuning options for screen recording.
+
+Use these values to reduce compatibility issues on devices that fail with
+`MediaRecorder prepare failed` when the default recorder profile is too heavy.
+
+| Prop                | Type                | Description                                                                            | Since  |
+| ------------------- | ------------------- | -------------------------------------------------------------------------------------- | ------ |
+| **`width`**         | <code>number</code> | Recording width in pixels. Use `-1` (default) to let Android pick the display width.   | 8.2.24 |
+| **`height`**        | <code>number</code> | Recording height in pixels. Use `-1` (default) to let Android pick the display height. | 8.2.24 |
+| **`bitrate`**       | <code>number</code> | Video encoding bitrate in bits per second. Defaults to `5000000` (5 Mbps).             | 8.2.24 |
+| **`frameRate`**     | <code>number</code> | Recording frame rate (fps). Defaults to `30`.                                          | 8.2.24 |
+| **`maxLengthSecs`** | <code>number</code> | Maximum recording duration in seconds. `0` means unlimited.                            | 8.2.24 |
 
 </docgen-api>
