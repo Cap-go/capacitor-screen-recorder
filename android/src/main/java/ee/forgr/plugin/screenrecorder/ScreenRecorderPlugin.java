@@ -15,7 +15,7 @@ import dev.bmcreations.scrcast.config.VideoConfig;
 @CapacitorPlugin(name = "ScreenRecorder")
 public class ScreenRecorderPlugin extends Plugin {
 
-    private final String pluginVersion = "8.2.23";
+    private final String pluginVersion = "8.2.24";
     private static final int DEFAULT_VIDEO_WIDTH = -1;
     private static final int DEFAULT_VIDEO_HEIGHT = -1;
     private static final int DEFAULT_VIDEO_BITRATE = 5_000_000;
