@@ -1,3 +1,5 @@
+import { CapacitorUpdater } from '@capgo/capacitor-updater';
+import { Capacitor } from '@capacitor/core';
 
 import './style.css';
 import { ScreenRecorder } from '@capgo/capacitor-screen-recorder';
@@ -5,30 +7,29 @@ import { ScreenRecorder } from '@capgo/capacitor-screen-recorder';
 const plugin = ScreenRecorder;
 const state = {};
 
-
 const actions = [
-{
-              id: 'start-recording',
-              label: 'Start recording',
-              description: 'Starts the screen recorder (native platforms).',
-              inputs: [{ name: 'recordAudio', label: 'Record audio', type: 'checkbox', value: true }],
-              run: async (values) => {
-                await plugin.start({ recordAudio: Boolean(values.recordAudio) });
-state.recording = true;
-return 'Recording requested.';
-              },
-            },
-{
-              id: 'stop-recording',
-              label: 'Stop recording',
-              description: 'Stops the recorder when active.',
-              inputs: [],
-              run: async (values) => {
-                await plugin.stop();
-state.recording = false;
-return 'Stop requested.';
-              },
-            }
+  {
+    id: 'start-recording',
+    label: 'Start recording',
+    description: 'Starts the screen recorder (native platforms).',
+    inputs: [{ name: 'recordAudio', label: 'Record audio', type: 'checkbox', value: true }],
+    run: async (values) => {
+      await plugin.start({ recordAudio: Boolean(values.recordAudio) });
+      state.recording = true;
+      return 'Recording requested.';
+    },
+  },
+  {
+    id: 'stop-recording',
+    label: 'Stop recording',
+    description: 'Stops the recorder when active.',
+    inputs: [],
+    run: async (values) => {
+      await plugin.stop();
+      state.recording = false;
+      return 'Stop requested.';
+    },
+  },
 ];
 
 const actionSelect = document.getElementById('action-select');
@@ -182,3 +183,9 @@ runButton.addEventListener('click', async () => {
 });
 
 populateActions();
+
+if (Capacitor.isNativePlatform()) {
+  CapacitorUpdater.notifyAppReady().catch((error) => {
+    console.error('Capgo notifyAppReady failed', error);
+  });
+}
