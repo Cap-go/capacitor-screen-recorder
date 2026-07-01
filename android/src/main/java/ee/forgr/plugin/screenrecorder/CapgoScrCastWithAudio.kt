@@ -141,12 +141,14 @@ class CapgoScrCastWithAudio private constructor(private val activity: ComponentA
     private fun cleanupSession() {
         try {
             broadcaster.unregisterReceiver(recordingStateHandler)
-        } catch (_: Exception) {
+        } catch (ignored: Exception) {
+            Log.d("CapgoScreenRecorder", "Receiver already unregistered", ignored)
         }
 
         try {
             activity.unbindService(connection)
-        } catch (_: Exception) {
+        } catch (ignored: Exception) {
+            Log.d("CapgoScreenRecorder", "Service already unbound", ignored)
         }
 
         recordingSession?.let { activity.stopService(it) }

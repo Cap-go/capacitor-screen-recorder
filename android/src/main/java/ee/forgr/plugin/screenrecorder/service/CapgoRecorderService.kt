@@ -300,6 +300,7 @@ class CapgoRecorderService : Service() {
         try {
             broadcaster.unregisterReceiver(pauseResumeHandler)
         } catch (swallow: Exception) {
+            Log.d("CapgoScreenRecorder", "Receiver already unregistered", swallow)
         }
 
         super.onDestroy()
