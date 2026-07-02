@@ -1,2 +1,12 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <application
+        android:fullBackupContent="@xml/screen_recorder_backup_rules"
+        android:usesCleartextTraffic="false"
+        tools:node="merge">
+        <service
+            android:name="ee.forgr.plugin.screenrecorder.service.CapgoRecorderService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection|microphone" />
+    </application>
 </manifest>

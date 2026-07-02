@@ -6,9 +6,11 @@
 //  Copyright © 2020 Cesar Vargas. All rights reserved.
 //
 
+import AVFoundation
 import Foundation
-import ReplayKit
 import Photos
+import ReplayKit
+import UIKit
 
 public enum ScreenRecorderError: Error {
     case notAvailable
@@ -22,37 +24,47 @@ public final class ScreenRecorder {
     private var micAudioWriterInput: AVAssetWriterInput?
     private var appAudioWriterInput: AVAssetWriterInput?
     private var saveToCameraRoll = false
+    private var recordAudio = false
     let recorder = RPScreenRecorder.shared()
 
-    /**
-     Starts recording the content of the application screen. It works together with stopRecording
-
-     - Parameter outputURL: The output where the video will be saved. If nil, it saves it in the documents directory.
-     - Parameter size: The size of the video. If nil, it will use the app screen size.
-     - Parameter saveToCameraRoll: Whether to save it to camera roll. False by default.
-     - Parameter errorHandler: Called when an error is found
-     */
     public func startRecording(to outputURL: URL? = nil,
                                size: CGSize? = nil,
                                saveToCameraRoll: Bool = false,
+                               recordAudio: Bool = false,
                                handler: @escaping (Error?) -> Void) {
-        recorder.isMicrophoneEnabled = true
+        self.saveToCameraRoll = saveToCameraRoll
+        self.recordAudio = recordAudio
+        resetWriterState()
+
+        recorder.isMicrophoneEnabled = recordAudio
+
         do {
+            if recordAudio {
+                try configureAudioSession()
+            }
             try createVideoWriter(in: outputURL)
             addVideoWriterInput(size: size)
-            self.micAudioWriterInput = createAndAddAudioInput()
-            self.appAudioWriterInput = createAndAddAudioInput()
+            if recordAudio {
+                self.micAudioWriterInput = createAndAddAudioInput()
+                self.appAudioWriterInput = createAndAddAudioInput()
+            }
             startCapture(handler: handler)
         } catch let err {
             handler(err)
         }
     }
 
-    private func checkPhotoLibraryAuthorizationStatus() {
-        let status = PHPhotoLibrary.authorizationStatus()
-        if status == .notDetermined {
-            PHPhotoLibrary.requestAuthorization({ _ in })
-        }
+    private func resetWriterState() {
+        videoWriter = nil
+        videoWriterInput = nil
+        micAudioWriterInput = nil
+        appAudioWriterInput = nil
+    }
+
+    private func configureAudioSession() throws {
+        let session = AVAudioSession.sharedInstance()
+        try session.setCategory(.playAndRecord, mode: .videoRecording, options: [.defaultToSpeaker, .mixWithOthers])
+        try session.setActive(true)
     }
 
     private func createVideoWriter(in outputURL: URL? = nil) throws {
@@ -93,18 +105,9 @@ public final class ScreenRecorder {
     }
 
     private func createAndAddAudioInput() -> AVAssetWriterInput {
-        let settings = [
-            AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
-            AVSampleRateKey: 12000,
-            AVNumberOfChannelsKey: 1,
-            AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
-        ]
-
-        let audioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: settings)
-
+        let audioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: nil)
         audioInput.expectsMediaDataInRealTime = true
         videoWriter?.add(audioInput)
-
         return audioInput
     }
 
@@ -119,15 +122,20 @@ public final class ScreenRecorder {
                     handler(passedError)
                     sent = true
                 }
+                return
             }
 
             switch sampleType {
             case .video:
                 self.handleSampleBuffer(sampleBuffer: sampleBuffer)
             case .audioApp:
-                self.add(sample: sampleBuffer, to: self.appAudioWriterInput)
+                if self.recordAudio {
+                    self.add(sample: sampleBuffer, to: self.appAudioWriterInput)
+                }
             case .audioMic:
-                self.add(sample: sampleBuffer, to: self.micAudioWriterInput)
+                if self.recordAudio {
+                    self.add(sample: sampleBuffer, to: self.micAudioWriterInput)
+                }
             default:
                 break
             }
@@ -149,26 +157,48 @@ public final class ScreenRecorder {
     }
 
     private func add(sample: CMSampleBuffer, to writerInput: AVAssetWriterInput?) {
-        if writerInput?.isReadyForMoreMediaData ?? false {
-            writerInput?.append(sample)
+        guard let writerInput = writerInput else { return }
+        guard self.videoWriter?.status == .writing else { return }
+        if writerInput.isReadyForMoreMediaData {
+            writerInput.append(sample)
         }
     }
 
-    /**
-     Stops recording the content of the application screen, after calling startRecording
-
-     - Parameter errorHandler: Called when an error is found
-     */
     public func stoprecording(handler: @escaping (Error?) -> Void) {
-        recorder.stopCapture( handler: { error in
+        recorder.stopCapture(handler: { error in
             if let error = error {
                 handler(error)
+                return
+            }
+
+            self.videoWriterInput?.markAsFinished()
+            self.micAudioWriterInput?.markAsFinished()
+            self.appAudioWriterInput?.markAsFinished()
+
+            guard let writer = self.videoWriter else {
+                handler(nil)
+                return
+            }
+
+            if writer.status == .writing {
+                writer.finishWriting {
+                    if let finishError = writer.error {
+                        handler(finishError)
+                        return
+                    }
+                    if self.saveToCameraRoll {
+                        self.saveVideoToCameraRollAfterAuthorized(handler: handler)
+                    } else {
+                        handler(nil)
+                    }
+                }
+            } else if writer.status == .failed {
+                handler(writer.error)
             } else {
-                self.videoWriterInput?.markAsFinished()
-                self.micAudioWriterInput?.markAsFinished()
-                self.appAudioWriterInput?.markAsFinished()
-                self.videoWriter?.finishWriting {
+                if self.saveToCameraRoll {
                     self.saveVideoToCameraRollAfterAuthorized(handler: handler)
+                } else {
+                    handler(nil)
                 }
             }
         })

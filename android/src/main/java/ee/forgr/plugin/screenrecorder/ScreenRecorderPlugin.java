@@ -14,24 +14,48 @@ public class ScreenRecorderPlugin extends Plugin {
     private final String pluginVersion = "8.2.37";
 
     private ScrCast recorder;
+    private CapgoScrCastWithAudio audioRecorder;
+    private boolean recordingWithAudio = false;
 
     @Override
     public void load() {
         recorder = ScrCast.use(this.bridge.getActivity());
+        audioRecorder = CapgoScrCastWithAudio.use(this.bridge.getActivity());
         Options options = new Options();
         recorder.updateOptions(options);
+        audioRecorder.updateOptions(options);
     }
 
     @PluginMethod
     public void start(PluginCall call) {
-        recorder.record();
-        call.resolve();
+        try {
+            final boolean recordAudio = call.getBoolean("recordAudio", false);
+            recordingWithAudio = recordAudio;
+
+            if (recordAudio) {
+                audioRecorder.record();
+            } else {
+                recorder.record();
+            }
+            call.resolve();
+        } catch (final Exception e) {
+            call.reject("Could not start screen recording", e);
+        }
     }
 
     @PluginMethod
     public void stop(PluginCall call) {
-        recorder.stopRecording();
-        call.resolve();
+        try {
+            if (recordingWithAudio) {
+                audioRecorder.stopRecording();
+            } else {
+                recorder.stopRecording();
+            }
+            recordingWithAudio = false;
+            call.resolve();
+        } catch (final Exception e) {
+            call.reject("Could not stop screen recording", e);
+        }
     }
 
     @PluginMethod
