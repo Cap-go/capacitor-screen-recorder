@@ -104,6 +104,8 @@ No configuration required for this plugin.
 * [`start(...)`](#start)
 * [`stop()`](#stop)
 * [`getPluginVersion()`](#getpluginversion)
+* [Interfaces](#interfaces)
+* [Type Aliases](#type-aliases)
 
 </docgen-index>
 
@@ -116,7 +118,7 @@ Allows you to capture video recordings of the screen with optional audio.
 ### start(...)
 
 ```typescript
-start(options?: { recordAudio?: boolean | undefined; } | undefined) => Promise<void>
+start(options?: StartRecordingOptions | undefined) => Promise<void>
 ```
 
 Start recording the device screen.
@@ -126,9 +128,9 @@ prompted to grant screen recording permissions if not already granted.
 On iOS, the system recording UI will be displayed. On Android, the recording
 starts immediately after permission is granted.
 
-| Param         | Type                                    | Description                       |
-| ------------- | --------------------------------------- | --------------------------------- |
-| **`options`** | <code>{ recordAudio?: boolean; }</code> | - Recording configuration options |
+| Param         | Type                                                                    | Description                       |
+| ------------- | ----------------------------------------------------------------------- | --------------------------------- |
+| **`options`** | <code><a href="#startrecordingoptions">StartRecordingOptions</a></code> | - Recording configuration options |
 
 **Since:** 1.0.0
 
@@ -165,5 +167,28 @@ Get the native Capacitor plugin version.
 **Since:** 1.0.0
 
 --------------------
+
+
+### Interfaces
+
+
+#### StartRecordingOptions
+
+Options for {@link ScreenRecorderPlugin.start}.
+
+| Prop              | Type                                                                                                                | Description                                                                                                                                                                                                         | Default            | Since |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ | ----- |
+| **`recordAudio`** | <code>boolean</code>                                                                                                | Whether to record audio along with the screen video.                                                                                                                                                                | <code>false</code> | 1.0.0 |
+| **`format`**      | <code><a href="#screenrecordervideoformat">ScreenRecorderVideoFormat</a> \| 'video/mp4' \| 'video/quicktime'</code> | Video container format for the saved recording. Accepts `mp4`, `mov`, or MIME types `video/mp4` and `video/quicktime`. iOS supports both `mp4` and `mov`. Android records MPEG-4 (`.mp4`) regardless of this value. | <code>'mp4'</code> | 8.3.0 |
+
+
+### Type Aliases
+
+
+#### ScreenRecorderVideoFormat
+
+Supported video container formats for screen recordings.
+
+<code>'mp4' | 'mov'</code>
 
 </docgen-api>

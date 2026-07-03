@@ -30,7 +30,12 @@ public class ScreenRecorderPlugin extends Plugin {
     public void start(PluginCall call) {
         try {
             final boolean recordAudio = call.getBoolean("recordAudio", false);
+            final String format = call.getString("format");
             recordingWithAudio = recordAudio;
+
+            final Options configuredOptions = VideoFormatResolver.INSTANCE.applyTo(recorder.getOptions(), format);
+            recorder.updateOptions(configuredOptions);
+            audioRecorder.updateVideoFormat(format);
 
             if (recordAudio) {
                 audioRecorder.record();

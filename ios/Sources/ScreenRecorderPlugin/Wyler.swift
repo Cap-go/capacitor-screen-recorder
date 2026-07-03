@@ -17,6 +17,38 @@ public enum ScreenRecorderError: Error {
     case photoLibraryAccessNotGranted
 }
 
+public enum VideoContainerFormat {
+    case mp4
+    case mov
+
+    var fileType: AVFileType {
+        switch self {
+        case .mp4:
+            return .mp4
+        case .mov:
+            return .mov
+        }
+    }
+
+    var fileExtension: String {
+        switch self {
+        case .mp4:
+            return "mp4"
+        case .mov:
+            return "mov"
+        }
+    }
+
+    static func from(_ value: String?) -> VideoContainerFormat {
+        switch value?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "mov", "video/quicktime", "quicktime":
+            return .mov
+        default:
+            return .mp4
+        }
+    }
+}
+
 public final class ScreenRecorder {
     private var videoOutputURL: URL?
     private var videoWriter: AVAssetWriter?
@@ -25,15 +57,18 @@ public final class ScreenRecorder {
     private var appAudioWriterInput: AVAssetWriterInput?
     private var saveToCameraRoll = false
     private var recordAudio = false
+    private var videoFormat: VideoContainerFormat = .mp4
     let recorder = RPScreenRecorder.shared()
 
     public func startRecording(to outputURL: URL? = nil,
                                size: CGSize? = nil,
                                saveToCameraRoll: Bool = false,
                                recordAudio: Bool = false,
+                               videoFormat: VideoContainerFormat = .mp4,
                                handler: @escaping (Error?) -> Void) {
         self.saveToCameraRoll = saveToCameraRoll
         self.recordAudio = recordAudio
+        self.videoFormat = videoFormat
         resetWriterState()
 
         recorder.isMicrophoneEnabled = recordAudio
@@ -75,7 +110,8 @@ public final class ScreenRecorder {
             newVideoOutputURL = passedVideoOutput
         } else {
             let documentsPath = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true)[0] as NSString
-            newVideoOutputURL = URL(fileURLWithPath: documentsPath.appendingPathComponent("WylerNewVideo.mp4"))
+            let fileName = "WylerNewVideo.\(videoFormat.fileExtension)"
+            newVideoOutputURL = URL(fileURLWithPath: documentsPath.appendingPathComponent(fileName))
             self.videoOutputURL = newVideoOutputURL
         }
 
@@ -84,7 +120,7 @@ public final class ScreenRecorder {
         } catch {}
 
         do {
-            try videoWriter = AVAssetWriter(outputURL: newVideoOutputURL, fileType: AVFileType.mp4)
+            try videoWriter = AVAssetWriter(outputURL: newVideoOutputURL, fileType: videoFormat.fileType)
         } catch let writerError as NSError {
             videoWriter = nil
             throw writerError

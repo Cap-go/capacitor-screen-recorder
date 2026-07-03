@@ -1,9 +1,9 @@
 import { WebPlugin } from '@capacitor/core';
 
-import type { ScreenRecorderPlugin } from './definitions';
+import type { ScreenRecorderPlugin, StartRecordingOptions } from './definitions';
 
 export class ScreenRecorderWeb extends WebPlugin implements ScreenRecorderPlugin {
-  async start(): Promise<void> {
+  async start(_options?: StartRecordingOptions): Promise<void> {
     throw new Error('Method not implemented.');
   }
   async stop(): Promise<void> {
