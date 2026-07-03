@@ -4,7 +4,7 @@ import pkg from './package.json';
 
 const config: CapacitorConfig = {
   appId: 'app.capgo.screen.recorder',
-  appName: 'Screen Recorder Example',
+  appName: '@capgo/capacitor-screen-recorder',
   webDir: 'dist',
   plugins: {
     SplashScreen: {
