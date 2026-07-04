@@ -33,6 +33,8 @@ class CapgoScrCastWithAudio private constructor(private val activity: ComponentA
     var options: Options = Options()
         private set
 
+    private var fileExtension: String = "mp4"
+
     private var recordingSession: Intent? = null
     private var serviceBinder: CapgoRecorderService? = null
     private var outputFile: File? = null
@@ -94,6 +96,14 @@ class CapgoScrCastWithAudio private constructor(private val activity: ComponentA
         this.options = handleDynamicVideoSize(options)
     }
 
+    fun updateVideoFormat(format: String?) {
+        val resolved = VideoFormatResolver.resolve(format)
+        fileExtension = resolved.extension
+        options = handleDynamicVideoSize(
+            options.copy(storage = options.storage.copy(outputFormat = resolved.outputFormat)),
+        )
+    }
+
     fun record() {
         Dexter.withContext(activity)
             .withPermissions(
@@ -111,7 +121,7 @@ class CapgoScrCastWithAudio private constructor(private val activity: ComponentA
 
     private fun resolveOutputFile(): File? {
         val dir = options.storage.mediaStorageLocation ?: return null
-        return File("${dir.path}${File.separator}${options.storage.fileNameFormatter()}.mp4")
+        return File("${dir.path}${File.separator}${options.storage.fileNameFormatter()}.$fileExtension")
     }
 
     private fun startService(result: ActivityResult, file: File) {

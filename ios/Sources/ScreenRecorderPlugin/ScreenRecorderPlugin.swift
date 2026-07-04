@@ -19,7 +19,8 @@ public class ScreenRecorderPlugin: CAPPlugin, CAPBridgedPlugin {
 
     @objc func start(_ call: CAPPluginCall) {
         let recordAudio = call.getBool("recordAudio") ?? false
-        implementation.startRecording(saveToCameraRoll: true, recordAudio: recordAudio, handler: { error in
+        let videoFormat = VideoContainerFormat.from(call.getString("format"))
+        implementation.startRecording(saveToCameraRoll: true, recordAudio: recordAudio, videoFormat: videoFormat, handler: { error in
             if let error = error {
                 debugPrint("Error when start recording \(error)")
                 call.reject("Cannot start recording")
@@ -28,6 +29,7 @@ public class ScreenRecorderPlugin: CAPPlugin, CAPBridgedPlugin {
             }
         })
     }
+
     @objc func stop(_ call: CAPPluginCall) {
         implementation.stoprecording(handler: { error in
             if let error = error {
@@ -42,5 +44,4 @@ public class ScreenRecorderPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func getPluginVersion(_ call: CAPPluginCall) {
         call.resolve(["version": self.pluginVersion])
     }
-
 }
