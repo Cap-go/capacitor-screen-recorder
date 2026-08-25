@@ -10,7 +10,7 @@ import dev.bmcreations.scrcast.config.Options;
 @CapacitorPlugin(name = "ScreenRecorder")
 public class ScreenRecorderPlugin extends Plugin {
 
-    private final String pluginVersion = "8.3.4";
+    private final String pluginVersion = "8.3.5";
 
     private CapgoScrCast videoRecorder;
     private CapgoScrCast audioRecorder;
