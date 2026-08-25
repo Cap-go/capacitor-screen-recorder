@@ -23,10 +23,12 @@ import dev.bmcreations.scrcast.internal.recorder.*
 import dev.bmcreations.scrcast.internal.recorder.service.orientations
 import dev.bmcreations.scrcast.recorder.*
 import dev.bmcreations.scrcast.recorder.notification.NotificationProvider
+import ee.forgr.plugin.screenrecorder.MediaRecorderPrepare
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import java.io.File
+import java.io.IOException
 
 class CapgoRecorderService : Service() {
 
@@ -86,6 +88,7 @@ class CapgoRecorderService : Service() {
 
     private var requestCode: Int = -1
     private var requestData: Intent = Intent()
+    private var recordAudio: Boolean = false
 
     private var mediaProjection: MediaProjection? = null
     private var mediaProjectionCallback = MediaProjectionCallback()
@@ -120,13 +123,15 @@ class CapgoRecorderService : Service() {
         }
     }
 
-    private fun createRecorder() {
+    private fun createRecorder(): Boolean {
         Log.d("scrcast", "createRecorder()")
         mediaRecorder = createMediaRecorder().apply {
-            setAudioSource(AudioSource.MIC)
+            if (recordAudio) {
+                setAudioSource(AudioSource.MIC)
+                setAudioEncoder(AudioEncoder.AAC)
+            }
             setVideoSource(VideoSource.SURFACE)
             setOutputFormat(options.storage.outputFormat)
-            setAudioEncoder(AudioEncoder.AAC)
             setOutputFile(outputFile)
             with(options.video) {
                 setVideoSize(width, height)
@@ -167,7 +172,22 @@ class CapgoRecorderService : Service() {
             }
             setOrientationHint(orientation)
         }
-        mediaRecorder?.prepare()
+
+        val prepareError = MediaRecorderPrepare.tryPrepare(mediaRecorder)
+        if (prepareError != null) {
+            Log.e("scrcast", "MediaRecorder prepare failed", prepareError)
+            releaseRecorder()
+            return false
+        }
+        return true
+    }
+
+    private fun releaseRecorder() {
+        runCatching {
+            mediaRecorder?.reset()
+            mediaRecorder?.release()
+        }
+        mediaRecorder = null
     }
 
     fun setNotificationProvider(provider: NotificationProvider) {
@@ -236,7 +256,10 @@ class CapgoRecorderService : Service() {
             }
 
             mediaProjection?.registerCallback(mediaProjectionCallback, Handler())
-            createRecorder()
+            if (!createRecorder()) {
+                stopRecording(IOException("MediaRecorder prepare failed"))
+                return@launch
+            }
             virtualDisplay // touch
             try {
                 mediaRecorder?.start()
@@ -260,12 +283,12 @@ class CapgoRecorderService : Service() {
         mediaProjection = null
 
         _virtualDisplay?.release()
+        _virtualDisplay = null
 
         runCatching {
             mediaRecorder?.stop()
-            mediaRecorder?.reset()
-            mediaRecorder?.release()
         }
+        releaseRecorder()
     }
 
     private inner class MediaProjectionCallback : MediaProjection.Callback() {
@@ -281,6 +304,7 @@ class CapgoRecorderService : Service() {
             rotation = it.getIntExtra("rotation", 0)
             dpi = it.getFloatExtra("dpi", 0f)
             outputFile = it.getStringExtra("outputFile") ?: ""
+            recordAudio = it.getBooleanExtra("recordAudio", false)
 
             startRecording(
                 code = it.getIntExtra("code", -1),

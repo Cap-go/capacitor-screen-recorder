@@ -25,19 +25,21 @@ import dev.bmcreations.scrcast.internal.recorder.EXTRA_ERROR
 import dev.bmcreations.scrcast.internal.recorder.STATE_IDLE
 import dev.bmcreations.scrcast.internal.recorder.STATE_RECORDING
 import dev.bmcreations.scrcast.internal.recorder.notification.RecorderNotificationProvider
-import dev.bmcreations.scrcast.recorder.RecordingState
 import ee.forgr.plugin.screenrecorder.service.CapgoRecorderService
 import java.io.File
 
-class CapgoScrCastWithAudio private constructor(private val activity: ComponentActivity) {
+class CapgoScrCast private constructor(
+    private val activity: ComponentActivity,
+    private val recordAudio: Boolean,
+) {
     var options: Options = Options()
         private set
 
     private var fileExtension: String = "mp4"
-
     private var recordingSession: Intent? = null
     private var serviceBinder: CapgoRecorderService? = null
     private var outputFile: File? = null
+    private var startListener: StartListener? = null
 
     private val metrics by lazy {
         DisplayMetrics().apply { activity.windowManager.defaultDisplay.getMetrics(this) }
@@ -65,15 +67,30 @@ class CapgoScrCastWithAudio private constructor(private val activity: ComponentA
 
     private val recordingStateHandler = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == STATE_IDLE) {
-                cleanupSession()
+            when (intent?.action) {
+                STATE_RECORDING -> {
+                    startListener?.onStarted()
+                    startListener = null
+                }
+                STATE_IDLE -> {
+                    val error = intent.getSerializableExtra(EXTRA_ERROR) as? Throwable
+                    if (error != null) {
+                        startListener?.onFailed(error)
+                    }
+                    cleanupSession()
+                }
             }
         }
     }
 
     private val permissionListener = object : MultiplePermissionsListener {
         override fun onPermissionsChecked(report: MultiplePermissionsReport?) {
-            startProjection.launch(Unit)
+            if (report?.areAllPermissionsGranted() == true) {
+                startProjection.launch(Unit)
+            } else {
+                startListener?.onFailed(SecurityException("Required permissions were not granted"))
+                startListener = null
+            }
         }
 
         override fun onPermissionRationaleShouldBeShown(
@@ -86,37 +103,50 @@ class CapgoScrCastWithAudio private constructor(private val activity: ComponentA
 
     private val startProjection = activity.registerForActivityResult(CapgoRecordScreen()) { result ->
         if (result.resultCode != Activity.RESULT_OK) {
+            startListener?.onFailed(IllegalStateException("Screen capture permission denied"))
             return@registerForActivityResult
         }
-        val file = resolveOutputFile() ?: return@registerForActivityResult
+        val file = resolveOutputFile()
+        if (file == null) {
+            startListener?.onFailed(IllegalStateException("Could not resolve screen recording output file"))
+            return@registerForActivityResult
+        }
         startService(result, file)
     }
 
     fun updateOptions(options: Options) {
-        this.options = handleDynamicVideoSize(options)
+        this.options = resolveVideoSize(options)
     }
 
     fun updateVideoFormat(format: String?) {
         val resolved = VideoFormatResolver.resolve(format)
         fileExtension = resolved.extension
-        options = handleDynamicVideoSize(
+        options = resolveVideoSize(
             options.copy(storage = options.storage.copy(outputFormat = resolved.outputFormat)),
         )
     }
 
-    fun record() {
+    fun record(listener: StartListener) {
+        startListener = listener
+        val permissions = buildList {
+            add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            add(Manifest.permission.READ_EXTERNAL_STORAGE)
+            if (recordAudio) {
+                add(Manifest.permission.RECORD_AUDIO)
+            }
+        }
         Dexter.withContext(activity)
-            .withPermissions(
-                Manifest.permission.WRITE_EXTERNAL_STORAGE,
-                Manifest.permission.READ_EXTERNAL_STORAGE,
-                Manifest.permission.RECORD_AUDIO,
-            )
+            .withPermissions(permissions)
             .withListener(permissionListener)
             .check()
     }
 
     fun stopRecording() {
         broadcaster.sendBroadcast(Intent(Action.Stop.name))
+    }
+
+    private fun resolveVideoSize(options: Options): Options {
+        return VideoSizeResolver.applyTo(options, metrics.widthPixels, metrics.heightPixels)
     }
 
     private fun resolveOutputFile(): File? {
@@ -133,6 +163,7 @@ class CapgoScrCastWithAudio private constructor(private val activity: ComponentA
             putExtra("outputFile", file.absolutePath)
             putExtra("dpi", dpi)
             putExtra("rotation", activity.windowManager.defaultDisplay.rotation)
+            putExtra("recordAudio", recordAudio)
         }
         recordingSession = session
 
@@ -149,6 +180,7 @@ class CapgoScrCastWithAudio private constructor(private val activity: ComponentA
     }
 
     private fun cleanupSession() {
+        startListener = null
         try {
             broadcaster.unregisterReceiver(recordingStateHandler)
         } catch (ignored: Exception) {
@@ -172,21 +204,15 @@ class CapgoScrCastWithAudio private constructor(private val activity: ComponentA
         outputFile = null
     }
 
-    private fun handleDynamicVideoSize(options: Options): Options {
-        var reconfig = options
-        if (options.video.width == -1) {
-            reconfig = reconfig.copy(video = reconfig.video.copy(width = metrics.widthPixels))
-        }
-        if (options.video.height == -1) {
-            reconfig = reconfig.copy(video = reconfig.video.copy(height = metrics.heightPixels))
-        }
-        return reconfig
+    interface StartListener {
+        fun onStarted()
+        fun onFailed(error: Throwable)
     }
 
     companion object {
         @JvmStatic
-        fun use(activity: ComponentActivity): CapgoScrCastWithAudio {
-            return CapgoScrCastWithAudio(activity)
+        fun use(activity: ComponentActivity, recordAudio: Boolean): CapgoScrCast {
+            return CapgoScrCast(activity, recordAudio)
         }
     }
 }

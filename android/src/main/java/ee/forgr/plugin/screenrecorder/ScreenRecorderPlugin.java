@@ -5,7 +5,6 @@ import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
-import dev.bmcreations.scrcast.ScrCast;
 import dev.bmcreations.scrcast.config.Options;
 
 @CapacitorPlugin(name = "ScreenRecorder")
@@ -13,39 +12,48 @@ public class ScreenRecorderPlugin extends Plugin {
 
     private final String pluginVersion = "8.3.4";
 
-    private ScrCast recorder;
-    private CapgoScrCastWithAudio audioRecorder;
+    private CapgoScrCast videoRecorder;
+    private CapgoScrCast audioRecorder;
     private boolean recordingWithAudio = false;
 
     @Override
     public void load() {
-        recorder = ScrCast.use(this.bridge.getActivity());
-        audioRecorder = CapgoScrCastWithAudio.use(this.bridge.getActivity());
-        Options options = new Options();
-        recorder.updateOptions(options);
+        videoRecorder = CapgoScrCast.use(this.bridge.getActivity(), false);
+        audioRecorder = CapgoScrCast.use(this.bridge.getActivity(), true);
+        final Options options = new Options();
+        videoRecorder.updateOptions(options);
         audioRecorder.updateOptions(options);
     }
 
     @PluginMethod
-    public void start(PluginCall call) {
-        try {
-            final boolean recordAudio = call.getBoolean("recordAudio", false);
-            final String format = call.getString("format");
-            recordingWithAudio = recordAudio;
+    public void start(final PluginCall call) {
+        final boolean recordAudio = call.getBoolean("recordAudio", false);
+        final String format = call.getString("format");
+        recordingWithAudio = recordAudio;
 
-            final Options configuredOptions = VideoFormatResolver.INSTANCE.applyTo(recorder.getOptions(), format);
-            recorder.updateOptions(configuredOptions);
-            audioRecorder.updateVideoFormat(format);
+        final CapgoScrCast recorder = recordAudio ? audioRecorder : videoRecorder;
+        final Options configuredOptions = VideoFormatResolver.INSTANCE.applyTo(recorder.getOptions(), format);
+        recorder.updateOptions(configuredOptions);
+        recorder.updateVideoFormat(format);
 
-            if (recordAudio) {
-                audioRecorder.record();
-            } else {
-                recorder.record();
+        call.setKeepAlive(true);
+        recorder.record(
+            new CapgoScrCast.StartListener() {
+                @Override
+                public void onStarted() {
+                    call.resolve();
+                    call.release(bridge);
+                }
+
+                @Override
+                public void onFailed(final Throwable error) {
+                    recordingWithAudio = false;
+                    final Exception exception = error instanceof Exception ? (Exception) error : new Exception(error);
+                    call.reject("Could not start screen recording", exception);
+                    call.release(bridge);
+                }
             }
-            call.resolve();
-        } catch (final Exception e) {
-            call.reject("Could not start screen recording", e);
-        }
+        );
     }
 
     @PluginMethod
@@ -54,7 +62,7 @@ public class ScreenRecorderPlugin extends Plugin {
             if (recordingWithAudio) {
                 audioRecorder.stopRecording();
             } else {
-                recorder.stopRecording();
+                videoRecorder.stopRecording();
             }
             recordingWithAudio = false;
             call.resolve();
