@@ -27,33 +27,51 @@ public class ScreenRecorderPlugin extends Plugin {
 
     @PluginMethod
     public void start(final PluginCall call) {
-        final boolean recordAudio = call.getBoolean("recordAudio", false);
-        final String format = call.getString("format");
-        recordingWithAudio = recordAudio;
+        boolean keptAlive = false;
+        try {
+            final boolean recordAudio = call.getBoolean("recordAudio", false);
+            final String format = call.getString("format");
+            recordingWithAudio = recordAudio;
 
-        final CapgoScrCast recorder = recordAudio ? audioRecorder : videoRecorder;
-        final Options configuredOptions = VideoFormatResolver.INSTANCE.applyTo(recorder.getOptions(), format);
-        recorder.updateOptions(configuredOptions);
-        recorder.updateVideoFormat(format);
+            final CapgoScrCast recorder = recordAudio ? audioRecorder : videoRecorder;
+            final Options configuredOptions = VideoFormatResolver.INSTANCE.applyTo(recorder.getOptions(), format);
+            recorder.updateOptions(configuredOptions);
+            recorder.updateVideoFormat(format);
 
-        call.setKeepAlive(true);
-        recorder.record(
-            new CapgoScrCast.StartListener() {
-                @Override
-                public void onStarted() {
-                    call.resolve();
-                    call.release(bridge);
+            call.setKeepAlive(true);
+            keptAlive = true;
+            final boolean started = recorder.record(
+                new CapgoScrCast.StartListener() {
+                    @Override
+                    public void onStarted() {
+                        call.resolve();
+                        call.release(bridge);
+                    }
+
+                    @Override
+                    public void onFailed(final Throwable error) {
+                        recordingWithAudio = false;
+                        final Exception exception = error instanceof Exception ? (Exception) error : new Exception(error);
+                        call.reject("Could not start screen recording", exception);
+                        call.release(bridge);
+                    }
                 }
-
-                @Override
-                public void onFailed(final Throwable error) {
-                    recordingWithAudio = false;
-                    final Exception exception = error instanceof Exception ? (Exception) error : new Exception(error);
-                    call.reject("Could not start screen recording", exception);
-                    call.release(bridge);
-                }
+            );
+            if (!started) {
+                recordingWithAudio = false;
+                call.reject(
+                    "Could not start screen recording",
+                    new IllegalStateException("A screen recording start is already in progress")
+                );
+                call.release(bridge);
             }
-        );
+        } catch (final Exception e) {
+            recordingWithAudio = false;
+            call.reject("Could not start screen recording", e);
+            if (keptAlive) {
+                call.release(bridge);
+            }
+        }
     }
 
     @PluginMethod

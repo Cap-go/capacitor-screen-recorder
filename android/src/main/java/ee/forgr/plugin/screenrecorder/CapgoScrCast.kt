@@ -88,8 +88,7 @@ class CapgoScrCast private constructor(
             if (report?.areAllPermissionsGranted() == true) {
                 startProjection.launch(Unit)
             } else {
-                startListener?.onFailed(SecurityException("Required permissions were not granted"))
-                startListener = null
+                notifyStartFailed(SecurityException("Required permissions were not granted"))
             }
         }
 
@@ -103,12 +102,12 @@ class CapgoScrCast private constructor(
 
     private val startProjection = activity.registerForActivityResult(CapgoRecordScreen()) { result ->
         if (result.resultCode != Activity.RESULT_OK) {
-            startListener?.onFailed(IllegalStateException("Screen capture permission denied"))
+            notifyStartFailed(IllegalStateException("Screen capture permission denied"))
             return@registerForActivityResult
         }
         val file = resolveOutputFile()
         if (file == null) {
-            startListener?.onFailed(IllegalStateException("Could not resolve screen recording output file"))
+            notifyStartFailed(IllegalStateException("Could not resolve screen recording output file"))
             return@registerForActivityResult
         }
         startService(result, file)
@@ -126,7 +125,10 @@ class CapgoScrCast private constructor(
         )
     }
 
-    fun record(listener: StartListener) {
+    fun record(listener: StartListener): Boolean {
+        if (startListener != null) {
+            return false
+        }
         startListener = listener
         val permissions = buildList {
             add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
@@ -139,6 +141,12 @@ class CapgoScrCast private constructor(
             .withPermissions(permissions)
             .withListener(permissionListener)
             .check()
+        return true
+    }
+
+    private fun notifyStartFailed(error: Throwable) {
+        startListener?.onFailed(error)
+        startListener = null
     }
 
     fun stopRecording() {

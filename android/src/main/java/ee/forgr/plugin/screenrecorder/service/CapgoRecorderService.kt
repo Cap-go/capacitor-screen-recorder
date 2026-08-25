@@ -128,10 +128,12 @@ class CapgoRecorderService : Service() {
         mediaRecorder = createMediaRecorder().apply {
             if (recordAudio) {
                 setAudioSource(AudioSource.MIC)
-                setAudioEncoder(AudioEncoder.AAC)
             }
             setVideoSource(VideoSource.SURFACE)
             setOutputFormat(options.storage.outputFormat)
+            if (recordAudio) {
+                setAudioEncoder(AudioEncoder.AAC)
+            }
             setOutputFile(outputFile)
             with(options.video) {
                 setVideoSize(width, height)
