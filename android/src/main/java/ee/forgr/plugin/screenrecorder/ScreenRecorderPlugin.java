@@ -59,10 +59,7 @@ public class ScreenRecorderPlugin extends Plugin {
             );
             if (!started) {
                 recordingWithAudio = false;
-                call.reject(
-                    "Could not start screen recording",
-                    new IllegalStateException("A screen recording start is already in progress")
-                );
+                call.reject("Could not start screen recording", new IllegalStateException("A screen recording is already in progress"));
                 call.release(bridge);
             }
         } catch (final Exception e) {

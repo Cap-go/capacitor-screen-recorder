@@ -40,6 +40,7 @@ class CapgoScrCast private constructor(
     private var serviceBinder: CapgoRecorderService? = null
     private var outputFile: File? = null
     private var startListener: StartListener? = null
+    private var receiverRegistered = false
 
     private val metrics by lazy {
         DisplayMetrics().apply { activity.windowManager.defaultDisplay.getMetrics(this) }
@@ -126,7 +127,7 @@ class CapgoScrCast private constructor(
     }
 
     fun record(listener: StartListener): Boolean {
-        if (startListener != null) {
+        if (!CapgoRecordingCoordinator.tryAcquire()) {
             return false
         }
         startListener = listener
@@ -147,6 +148,7 @@ class CapgoScrCast private constructor(
     private fun notifyStartFailed(error: Throwable) {
         startListener?.onFailed(error)
         startListener = null
+        CapgoRecordingCoordinator.release()
     }
 
     fun stopRecording() {
@@ -175,25 +177,45 @@ class CapgoScrCast private constructor(
         }
         recordingSession = session
 
-        broadcaster.registerReceiver(
-            recordingStateHandler,
-            IntentFilter().apply {
-                addAction(STATE_IDLE)
-                addAction(STATE_RECORDING)
-            },
-        )
-
-        activity.bindService(session, connection, Context.BIND_AUTO_CREATE)
-        activity.startService(session)
+        try {
+            broadcaster.registerReceiver(
+                recordingStateHandler,
+                IntentFilter().apply {
+                    addAction(STATE_IDLE)
+                    addAction(STATE_RECORDING)
+                },
+            )
+            receiverRegistered = true
+            activity.bindService(session, connection, Context.BIND_AUTO_CREATE)
+            activity.startService(session)
+        } catch (error: Exception) {
+            Log.e("CapgoScreenRecorder", "Failed to start screen recording service", error)
+            rollbackFailedStart(error)
+        }
     }
 
-    private fun cleanupSession() {
-        startListener = null
+    private fun rollbackFailedStart(error: Throwable) {
+        unregisterRecordingReceiver()
+        recordingSession = null
+        outputFile = null
+        notifyStartFailed(error)
+    }
+
+    private fun unregisterRecordingReceiver() {
+        if (!receiverRegistered) {
+            return
+        }
         try {
             broadcaster.unregisterReceiver(recordingStateHandler)
         } catch (ignored: Exception) {
             Log.d("CapgoScreenRecorder", "Receiver already unregistered", ignored)
         }
+        receiverRegistered = false
+    }
+
+    private fun cleanupSession() {
+        startListener = null
+        unregisterRecordingReceiver()
 
         try {
             activity.unbindService(connection)
@@ -210,6 +232,7 @@ class CapgoScrCast private constructor(
             }
         }
         outputFile = null
+        CapgoRecordingCoordinator.release()
     }
 
     interface StartListener {
