@@ -54,7 +54,7 @@ jobs:
                     pull_number: candidate.number,
                   });
                   const author = data.user?.login ?? '';
-                  if (author === 'renovate[bot]' || author.startsWith('app/')) {
+                  if (author === 'renovate[bot]' || author === 'app/renovate') {
                     pr = data;
                     break;
                   }
@@ -159,7 +159,7 @@ jobs:
 
           fetch_check_runs() {
             gh api "repos/${REPO}/commits/${HEAD_SHA}/check-runs" --paginate \
-              --jq '.check_runs[] | [.name, .status, (.conclusion // "")] | @tsv'
+              --jq '.check_runs[] | [.id, .name, .status, (.conclusion // "")] | @tsv'
           }
 
           evaluate_required_checks() {
@@ -168,10 +168,12 @@ jobs:
 
             for required in "${REQUIRED_CHECKS[@]}"; do
               local found=false
-              local satisfied=false
+              local latest_id=""
+              local latest_status=""
+              local latest_conclusion=""
 
-              while IFS=$'\t' read -r name status conclusion; do
-                [[ -n "${name}" ]] || continue
+              while IFS=$'\t' read -r id name status conclusion; do
+                [[ -n "${id}" ]] || continue
                 if should_ignore_check "${name}"; then
                   continue
                 fi
@@ -179,20 +181,25 @@ jobs:
                   continue
                 fi
                 found=true
-                if [[ "${status}" != "completed" ]]; then
-                  pending=true
-                elif [[ "${conclusion}" == "success" || "${conclusion}" == "skipped" || "${conclusion}" == "neutral" ]]; then
-                  satisfied=true
-                else
-                  echo "::error::Required check failed: ${name} (${conclusion})"
-                  failed=true
+                if [[ -z "${latest_id}" || "${id}" -gt "${latest_id}" ]]; then
+                  latest_id="${id}"
+                  latest_status="${status}"
+                  latest_conclusion="${conclusion}"
                 fi
               done < <(fetch_check_runs)
 
               if [[ "${found}" != "true" ]]; then
                 pending=true
-              elif [[ "${satisfied}" != "true" && "${failed}" != "true" ]]; then
+                continue
+              fi
+
+              if [[ "${latest_status}" != "completed" ]]; then
                 pending=true
+              elif [[ "${latest_conclusion}" == "success" || "${latest_conclusion}" == "skipped" || "${latest_conclusion}" == "neutral" ]]; then
+                :
+              else
+                echo "::error::Required check failed: ${required} (${latest_conclusion})"
+                failed=true
               fi
             done
 
@@ -230,15 +237,16 @@ jobs:
 
           get_coderabbit_review_state() {
             gh api "repos/${REPO}/pulls/${PR_NUMBER}/reviews" --paginate \
-              --jq --arg sha "${HEAD_SHA}" --arg bot "${CODERABBIT_LOGIN}" '
-                [.[]
-                  | select(
-                      .user.login == $bot
-                      and .commit_id == $sha
-                      and .state != "PENDING"
-                      and .state != "DISMISSED"
-                    )
-                ]
+              | jq -r -s --arg sha "${HEAD_SHA}" --arg bot "${CODERABBIT_LOGIN}" '
+                add
+                | [.[]
+                    | select(
+                        .user.login == $bot
+                        and .commit_id == $sha
+                        and .state != "PENDING"
+                        and .state != "DISMISSED"
+                      )
+                  ]
                 | sort_by(.submitted_at)
                 | last
                 | .state // ""'
