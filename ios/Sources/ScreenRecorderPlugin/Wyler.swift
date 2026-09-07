@@ -163,6 +163,9 @@ public final class ScreenRecorder: NSObject {
         recorder.startCapture(handler: { (sampleBuffer, sampleType, passedError) in
             if let passedError = passedError {
                 if !sent {
+                    // The capture never started — clear the flag so a later
+                    // delegate callback cannot report this as an external stop.
+                    self.isRecording = false
                     handler(passedError)
                     sent = true
                 }
@@ -210,6 +213,7 @@ public final class ScreenRecorder: NSObject {
 
     public func stoprecording(handler: @escaping (Error?) -> Void) {
         stopRequested = true
+        let outputURL = videoOutputURL
         recorder.stopCapture(handler: { error in
             if let error = error {
                 handler(error)
@@ -217,11 +221,11 @@ public final class ScreenRecorder: NSObject {
             }
 
             self.isRecording = false
-            self.finishWriterAndDeliver(handler: handler)
+            self.finishWriterAndDeliver(outputURL: outputURL, handler: handler)
         })
     }
 
-    private func finishWriterAndDeliver(handler: @escaping (Error?) -> Void) {
+    private func finishWriterAndDeliver(outputURL: URL?, handler: @escaping (Error?) -> Void) {
         videoWriterInput?.markAsFinished()
         micAudioWriterInput?.markAsFinished()
         appAudioWriterInput?.markAsFinished()
@@ -237,18 +241,18 @@ public final class ScreenRecorder: NSObject {
                     handler(finishError)
                     return
                 }
-                self.deliverOutput(handler: handler)
+                self.deliverOutput(url: outputURL, handler: handler)
             }
         } else if writer.status == .failed {
             handler(writer.error)
         } else {
-            self.deliverOutput(handler: handler)
+            self.deliverOutput(url: outputURL, handler: handler)
         }
     }
 
-    private func deliverOutput(handler: @escaping (Error?) -> Void) {
+    private func deliverOutput(url: URL?, handler: @escaping (Error?) -> Void) {
         if saveToCameraRoll {
-            saveVideoToCameraRollAfterAuthorized(handler: handler)
+            saveVideoToCameraRollAfterAuthorized(url: url, handler: handler)
         } else {
             handler(nil)
         }
@@ -257,19 +261,23 @@ public final class ScreenRecorder: NSObject {
     private func handleRecordingEndedExternally(error: Error?) {
         guard isRecording, !stopRequested else { return }
         isRecording = false
-        finishWriterAndDeliver(handler: { [weak self] finishError in
+        // Capture the session's output URL: finishWriting is asynchronous and
+        // a new startRecording() would otherwise republish the next
+        // recording's URL (and save its file to the camera roll).
+        let outputURL = videoOutputURL
+        finishWriterAndDeliver(outputURL: outputURL, handler: { [weak self] finishError in
             guard let self = self else { return }
-            self.onExternalStop?(self.videoOutputURL, error ?? finishError)
+            self.onExternalStop?(outputURL, error ?? finishError)
         })
     }
 
-    private func saveVideoToCameraRollAfterAuthorized(handler: @escaping (Error?) -> Void) {
+    private func saveVideoToCameraRollAfterAuthorized(url: URL?, handler: @escaping (Error?) -> Void) {
         if PHPhotoLibrary.authorizationStatus() == .authorized {
-            self.saveVideoToCameraRoll(handler: handler)
+            self.saveVideoToCameraRoll(url: url, handler: handler)
         } else {
             PHPhotoLibrary.requestAuthorization({ (status) in
                 if status == .authorized {
-                    self.saveVideoToCameraRoll(handler: handler)
+                    self.saveVideoToCameraRoll(url: url, handler: handler)
                 } else {
                     handler(ScreenRecorderError.photoLibraryAccessNotGranted)
                 }
@@ -277,13 +285,13 @@ public final class ScreenRecorder: NSObject {
         }
     }
 
-    private func saveVideoToCameraRoll(handler: @escaping (Error?) -> Void) {
-        guard let videoOutputURL = self.videoOutputURL else {
+    private func saveVideoToCameraRoll(url: URL?, handler: @escaping (Error?) -> Void) {
+        guard let url = url else {
             return handler(nil)
         }
 
         PHPhotoLibrary.shared().performChanges({
-            PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: videoOutputURL)
+            PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: url)
         }, completionHandler: { _, error in
             if let error = error {
                 handler(error)
