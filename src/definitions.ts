@@ -119,6 +119,8 @@ export interface ScreenRecorderPlugin {
    * the user stopped the capture from the system UI (Android "Stop sharing")
    * or the recorder terminated itself (max duration / max file size).
    *
+   * This event is currently only emitted on Android; iOS support is planned.
+   *
    * @param eventName - `onStopped`
    * @param listenerFunc - Called with the local URI of the finished file and
    * the error message when the recording ended with a failure.
