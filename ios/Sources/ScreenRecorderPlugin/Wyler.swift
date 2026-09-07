@@ -110,7 +110,7 @@ public final class ScreenRecorder {
             newVideoOutputURL = passedVideoOutput
         } else {
             let documentsPath = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true)[0] as NSString
-            let fileName = "WylerNewVideo.\(videoFormat.fileExtension)"
+            let fileName = "WylerNewVideo-\(UUID().uuidString).\(videoFormat.fileExtension)"
             newVideoOutputURL = URL(fileURLWithPath: documentsPath.appendingPathComponent(fileName))
             self.videoOutputURL = newVideoOutputURL
         }
