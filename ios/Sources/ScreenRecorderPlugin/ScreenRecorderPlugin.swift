@@ -17,6 +17,17 @@ public class ScreenRecorderPlugin: CAPPlugin, CAPBridgedPlugin {
     ]
     private let implementation = ScreenRecorder()
 
+    override public func load() {
+        implementation.onExternalStop = { [weak self] url, error in
+            guard let self = self else { return }
+            var data: [String: Any] = ["url": url?.absoluteString ?? ""]
+            if let error = error {
+                data["error"] = error.localizedDescription
+            }
+            self.notifyListeners("onStopped", data: data)
+        }
+    }
+
     @objc func start(_ call: CAPPluginCall) {
         let recordAudio = call.getBool("recordAudio") ?? false
         let videoFormat = VideoContainerFormat.from(call.getString("format"))

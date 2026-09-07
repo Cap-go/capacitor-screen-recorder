@@ -49,7 +49,7 @@ public enum VideoContainerFormat {
     }
 }
 
-public final class ScreenRecorder {
+public final class ScreenRecorder: NSObject {
     private var videoOutputURL: URL?
     private var videoWriter: AVAssetWriter?
     private var videoWriterInput: AVAssetWriterInput?
@@ -59,6 +59,11 @@ public final class ScreenRecorder {
     private var recordAudio = false
     private var videoFormat: VideoContainerFormat = .mp4
     let recorder = RPScreenRecorder.shared()
+    /// Notified when the recording ends without `stoprecording()` being
+    /// involved — the system stopped the capture (interruption, error).
+    public var onExternalStop: ((URL?, Error?) -> Void)?
+    private var isRecording = false
+    private var stopRequested = false
 
     public func startRecording(to outputURL: URL? = nil,
                                size: CGSize? = nil,
@@ -70,6 +75,8 @@ public final class ScreenRecorder {
         self.recordAudio = recordAudio
         self.videoFormat = videoFormat
         resetWriterState()
+        stopRequested = false
+        recorder.delegate = self
 
         recorder.isMicrophoneEnabled = recordAudio
 
@@ -151,6 +158,7 @@ public final class ScreenRecorder {
         guard recorder.isAvailable else {
             return handler(ScreenRecorderError.notAvailable)
         }
+        isRecording = true
         var sent = false
         recorder.startCapture(handler: { (sampleBuffer, sampleType, passedError) in
             if let passedError = passedError {
@@ -201,42 +209,57 @@ public final class ScreenRecorder {
     }
 
     public func stoprecording(handler: @escaping (Error?) -> Void) {
+        stopRequested = true
         recorder.stopCapture(handler: { error in
             if let error = error {
                 handler(error)
                 return
             }
 
-            self.videoWriterInput?.markAsFinished()
-            self.micAudioWriterInput?.markAsFinished()
-            self.appAudioWriterInput?.markAsFinished()
+            self.isRecording = false
+            self.finishWriterAndDeliver(handler: handler)
+        })
+    }
 
-            guard let writer = self.videoWriter else {
-                handler(nil)
-                return
-            }
+    private func finishWriterAndDeliver(handler: @escaping (Error?) -> Void) {
+        videoWriterInput?.markAsFinished()
+        micAudioWriterInput?.markAsFinished()
+        appAudioWriterInput?.markAsFinished()
 
-            if writer.status == .writing {
-                writer.finishWriting {
-                    if let finishError = writer.error {
-                        handler(finishError)
-                        return
-                    }
-                    if self.saveToCameraRoll {
-                        self.saveVideoToCameraRollAfterAuthorized(handler: handler)
-                    } else {
-                        handler(nil)
-                    }
+        guard let writer = videoWriter else {
+            handler(nil)
+            return
+        }
+
+        if writer.status == .writing {
+            writer.finishWriting {
+                if let finishError = writer.error {
+                    handler(finishError)
+                    return
                 }
-            } else if writer.status == .failed {
-                handler(writer.error)
-            } else {
-                if self.saveToCameraRoll {
-                    self.saveVideoToCameraRollAfterAuthorized(handler: handler)
-                } else {
-                    handler(nil)
-                }
+                self.deliverOutput(handler: handler)
             }
+        } else if writer.status == .failed {
+            handler(writer.error)
+        } else {
+            self.deliverOutput(handler: handler)
+        }
+    }
+
+    private func deliverOutput(handler: @escaping (Error?) -> Void) {
+        if saveToCameraRoll {
+            saveVideoToCameraRollAfterAuthorized(handler: handler)
+        } else {
+            handler(nil)
+        }
+    }
+
+    private func handleRecordingEndedExternally(error: Error?) {
+        guard isRecording, !stopRequested else { return }
+        isRecording = false
+        finishWriterAndDeliver(handler: { [weak self] finishError in
+            guard let self = self else { return }
+            self.onExternalStop?(self.videoOutputURL, error ?? finishError)
         })
     }
 
@@ -268,5 +291,13 @@ public final class ScreenRecorder {
                 handler(nil)
             }
         })
+    }
+}
+
+extension ScreenRecorder: RPScreenRecorderDelegate {
+    public func screenRecorder(_ screenRecorder: RPScreenRecorder,
+                               didStopRecordingWithError error: Error,
+                               previewViewController: RPPreviewViewController?) {
+        handleRecordingEndedExternally(error: error)
     }
 }

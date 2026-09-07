@@ -163,10 +163,9 @@ addListener(eventName: 'onStopped', listenerFunc: (event: ScreenRecorderStoppedE
 ```
 
 Listen for recordings that ended without {@link stop} being called —
-the user stopped the capture from the system UI (Android "Stop sharing")
-or the recorder terminated itself (max duration / max file size).
-
-This event is currently only emitted on Android; iOS support is planned.
+the user stopped the capture from the system UI (Android "Stop sharing"),
+the recorder terminated itself (max duration / max file size), or the
+system interrupted the capture (iOS, e.g. an incoming call).
 
 | Param              | Type                                                                                                  | Description                                                                                                     |
 | ------------------ | ----------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
