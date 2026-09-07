@@ -40,6 +40,14 @@ class CapgoScrCast private constructor(
     private var serviceBinder: CapgoRecorderService? = null
     private var outputFile: File? = null
     private var startListener: StartListener? = null
+    private var stopRequested = false
+
+    /**
+     * Notified when a recording ends without [stopRecording] having been
+     * involved — the user stopped it from the system UI or the recorder
+     * terminated itself (max duration / max size).
+     */
+    var externalStopListener: ExternalStopListener? = null
     private var receiverRegistered = false
 
     private val metrics by lazy {
@@ -74,11 +82,17 @@ class CapgoScrCast private constructor(
                     startListener = null
                 }
                 STATE_IDLE -> {
+                    val startPending = startListener != null
+                    val sessionActive = recordingSession != null
                     val error = intent.getSerializableExtra(EXTRA_ERROR) as? Throwable
                     if (error != null) {
                         startListener?.onFailed(error)
                     }
-                    cleanupSession()
+                    val savedPath = cleanupSession()
+                    if (!startPending && sessionActive && !stopRequested) {
+                        externalStopListener?.onExternalStop(savedPath, error?.message)
+                    }
+                    stopRequested = false
                 }
             }
         }
@@ -152,6 +166,7 @@ class CapgoScrCast private constructor(
     }
 
     fun stopRecording() {
+        stopRequested = true
         broadcaster.sendBroadcast(Intent(Action.Stop.name))
     }
 
@@ -213,7 +228,7 @@ class CapgoScrCast private constructor(
         receiverRegistered = false
     }
 
-    private fun cleanupSession() {
+    private fun cleanupSession(): String? {
         startListener = null
         unregisterRecordingReceiver()
 
@@ -226,18 +241,24 @@ class CapgoScrCast private constructor(
         recordingSession?.let { activity.stopService(it) }
         recordingSession = null
 
-        outputFile?.let { file ->
-            MediaScannerConnection.scanFile(activity, arrayOf(file.absolutePath), null) { path, uri ->
+        val savedPath = outputFile?.absolutePath
+        savedPath?.let { path ->
+            MediaScannerConnection.scanFile(activity, arrayOf(path), null) { path, uri ->
                 Log.i("CapgoScreenRecorder", "Saved recording: $path uri=$uri")
             }
         }
         outputFile = null
         CapgoRecordingCoordinator.release()
+        return savedPath
     }
 
     interface StartListener {
         fun onStarted()
         fun onFailed(error: Throwable)
+    }
+
+    interface ExternalStopListener {
+        fun onExternalStop(path: String?, error: String?)
     }
 
     companion object {

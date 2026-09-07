@@ -1,11 +1,13 @@
 package ee.forgr.plugin.screenrecorder;
 
+import android.net.Uri;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import dev.bmcreations.scrcast.config.Options;
+import java.io.File;
 
 @CapacitorPlugin(name = "ScreenRecorder")
 public class ScreenRecorderPlugin extends Plugin {
@@ -23,6 +25,22 @@ public class ScreenRecorderPlugin extends Plugin {
         final Options options = new Options();
         videoRecorder.updateOptions(options);
         audioRecorder.updateOptions(options);
+
+        final CapgoScrCast.ExternalStopListener externalStopListener =
+            new CapgoScrCast.ExternalStopListener() {
+                @Override
+                public void onExternalStop(final String path, final String error) {
+                    recordingWithAudio = false;
+                    final JSObject ret = new JSObject();
+                    ret.put("url", path != null ? Uri.fromFile(new File(path)).toString() : "");
+                    if (error != null) {
+                        ret.put("error", error);
+                    }
+                    notifyListeners("onStopped", ret);
+                }
+            };
+        videoRecorder.setExternalStopListener(externalStopListener);
+        audioRecorder.setExternalStopListener(externalStopListener);
     }
 
     @PluginMethod

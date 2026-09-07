@@ -1,3 +1,5 @@
+import type { PluginListenerHandle } from '@capacitor/core';
+
 /**
  * Supported video container formats for screen recordings.
  *
@@ -30,6 +32,33 @@ export interface StartRecordingOptions {
    * @example 'mov'
    */
   format?: ScreenRecorderVideoFormat | 'video/mp4' | 'video/quicktime';
+}
+
+/**
+ * Payload for the `onStopped` event.
+ *
+ * Fired when a recording ends without {@link ScreenRecorderPlugin.stop} being
+ * called — the user stopped the capture from the system UI (Android
+ * "Stop sharing") or the recorder terminated itself (max duration / max file
+ * size).
+ *
+ * @since 8.4.0
+ */
+export interface ScreenRecorderStoppedEvent {
+  /**
+   * Local URI of the finished recording (`file://` on Android). Empty string
+   * when the file path could not be resolved.
+   *
+   * @since 8.4.0
+   */
+  url: string;
+
+  /**
+   * Error message when the recording ended with a failure.
+   *
+   * @since 8.4.0
+   */
+  error?: string;
 }
 
 /**
@@ -84,6 +113,34 @@ export interface ScreenRecorderPlugin {
    * ```
    */
   stop(): Promise<void>;
+
+  /**
+   * Listen for recordings that ended without {@link stop} being called —
+   * the user stopped the capture from the system UI (Android "Stop sharing")
+   * or the recorder terminated itself (max duration / max file size).
+   *
+   * @param eventName - `onStopped`
+   * @param listenerFunc - Called with the local URI of the finished file and
+   * the error message when the recording ended with a failure.
+   * @since 8.4.0
+   * @example
+   * ```typescript
+   * ScreenRecorder.addListener('onStopped', (event) => {
+   *   console.log('Recording ended externally:', event.url, event.error);
+   * });
+   * ```
+   */
+  addListener(
+    eventName: 'onStopped',
+    listenerFunc: (event: ScreenRecorderStoppedEvent) => void,
+  ): Promise<PluginListenerHandle>;
+
+  /**
+   * Remove all listeners registered with {@link addListener}.
+   *
+   * @since 8.4.0
+   */
+  removeAllListeners(): Promise<void>;
 
   /**
    * Get the native Capacitor plugin version.

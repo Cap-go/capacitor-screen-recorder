@@ -103,6 +103,8 @@ No configuration required for this plugin.
 
 * [`start(...)`](#start)
 * [`stop()`](#stop)
+* [`addListener('onStopped', ...)`](#addlisteneronstopped-)
+* [`removeAllListeners()`](#removealllisteners)
 * [`getPluginVersion()`](#getpluginversion)
 * [Interfaces](#interfaces)
 * [Type Aliases](#type-aliases)
@@ -154,6 +156,41 @@ recording. On Android, the video is saved directly to the gallery.
 --------------------
 
 
+### addListener('onStopped', ...)
+
+```typescript
+addListener(eventName: 'onStopped', listenerFunc: (event: ScreenRecorderStoppedEvent) => void) => Promise<PluginListenerHandle>
+```
+
+Listen for recordings that ended without {@link stop} being called —
+the user stopped the capture from the system UI (Android "Stop sharing")
+or the recorder terminated itself (max duration / max file size).
+
+| Param              | Type                                                                                                  | Description                                                                                                     |
+| ------------------ | ----------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| **`eventName`**    | <code>'onStopped'</code>                                                                              | - `onStopped`                                                                                                   |
+| **`listenerFunc`** | <code>(event: <a href="#screenrecorderstoppedevent">ScreenRecorderStoppedEvent</a>) =&gt; void</code> | - Called with the local URI of the finished file and the error message when the recording ended with a failure. |
+
+**Returns:** <code>Promise&lt;<a href="#pluginlistenerhandle">PluginListenerHandle</a>&gt;</code>
+
+**Since:** 8.4.0
+
+--------------------
+
+
+### removeAllListeners()
+
+```typescript
+removeAllListeners() => Promise<void>
+```
+
+Remove all listeners registered with {@link addListener}.
+
+**Since:** 8.4.0
+
+--------------------
+
+
 ### getPluginVersion()
 
 ```typescript
@@ -180,6 +217,28 @@ Options for {@link ScreenRecorderPlugin.start}.
 | ----------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ | ----- |
 | **`recordAudio`** | <code>boolean</code>                                                                                                | Whether to record audio along with the screen video.                                                                                                                                                                | <code>false</code> | 1.0.0 |
 | **`format`**      | <code><a href="#screenrecordervideoformat">ScreenRecorderVideoFormat</a> \| 'video/mp4' \| 'video/quicktime'</code> | Video container format for the saved recording. Accepts `mp4`, `mov`, or MIME types `video/mp4` and `video/quicktime`. iOS supports both `mp4` and `mov`. Android records MPEG-4 (`.mp4`) regardless of this value. | <code>'mp4'</code> | 8.3.0 |
+
+
+#### PluginListenerHandle
+
+| Prop         | Type                                      |
+| ------------ | ----------------------------------------- |
+| **`remove`** | <code>() =&gt; Promise&lt;void&gt;</code> |
+
+
+#### ScreenRecorderStoppedEvent
+
+Payload for the `onStopped` event.
+
+Fired when a recording ends without {@link ScreenRecorderPlugin.stop} being
+called — the user stopped the capture from the system UI (Android
+"Stop sharing") or the recorder terminated itself (max duration / max file
+size).
+
+| Prop        | Type                | Description                                                                                                        | Since |
+| ----------- | ------------------- | ------------------------------------------------------------------------------------------------------------------ | ----- |
+| **`url`**   | <code>string</code> | Local URI of the finished recording (`file://` on Android). Empty string when the file path could not be resolved. | 8.4.0 |
+| **`error`** | <code>string</code> | Error message when the recording ended with a failure.                                                             | 8.4.0 |
 
 
 ### Type Aliases
