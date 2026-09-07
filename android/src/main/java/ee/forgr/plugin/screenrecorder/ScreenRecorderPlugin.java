@@ -26,19 +26,18 @@ public class ScreenRecorderPlugin extends Plugin {
         videoRecorder.updateOptions(options);
         audioRecorder.updateOptions(options);
 
-        final CapgoScrCast.ExternalStopListener externalStopListener =
-            new CapgoScrCast.ExternalStopListener() {
-                @Override
-                public void onExternalStop(final String path, final String error) {
-                    recordingWithAudio = false;
-                    final JSObject ret = new JSObject();
-                    ret.put("url", path != null ? Uri.fromFile(new File(path)).toString() : "");
-                    if (error != null) {
-                        ret.put("error", error);
-                    }
-                    notifyListeners("onStopped", ret);
+        final CapgoScrCast.ExternalStopListener externalStopListener = new CapgoScrCast.ExternalStopListener() {
+            @Override
+            public void onExternalStop(final String path, final String error) {
+                recordingWithAudio = false;
+                final JSObject ret = new JSObject();
+                ret.put("url", path != null ? Uri.fromFile(new File(path)).toString() : "");
+                if (error != null) {
+                    ret.put("error", error);
                 }
-            };
+                notifyListeners("onStopped", ret);
+            }
+        };
         videoRecorder.setExternalStopListener(externalStopListener);
         audioRecorder.setExternalStopListener(externalStopListener);
     }
