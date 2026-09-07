@@ -1,0 +1,260 @@
+name: Renovate AI automerge
+
+on:
+  pull_request_review:
+    types: [submitted]
+  check_suite:
+    types: [completed]
+  workflow_run:
+    workflows: ['Build source code and test it']
+    types: [completed]
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+  checks: read
+  statuses: read
+
+concurrency:
+  group: renovate-ai-automerge-${{ github.event.pull_request.number || github.event.check_suite.pull_requests[0].number || github.event.workflow_run.pull_requests[0].number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  automerge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Resolve pull request
+        id: pr
+        uses: actions/github-script@v9.0.0
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            let pr = context.payload.pull_request;
+
+            if (!pr) {
+              const linked =
+                context.payload.check_suite?.pull_requests ||
+                context.payload.workflow_run?.pull_requests ||
+                [];
+              if (linked.length === 1) {
+                const { data } = await github.rest.pulls.get({
+                  owner,
+                  repo,
+                  pull_number: linked[0].number,
+                });
+                pr = data;
+              } else if (linked.length > 1) {
+                for (const candidate of linked) {
+                  const { data } = await github.rest.pulls.get({
+                    owner,
+                    repo,
+                    pull_number: candidate.number,
+                  });
+                  const author = data.user?.login ?? '';
+                  if (author === 'renovate[bot]' || author.startsWith('app/')) {
+                    pr = data;
+                    break;
+                  }
+                }
+              }
+            }
+
+            if (!pr) {
+              core.setFailed('No pull request context for this event');
+              return;
+            }
+
+            core.setOutput('number', String(pr.number));
+            core.setOutput('head_sha', pr.head.sha);
+            core.setOutput('author', pr.user?.login ?? '');
+            core.setOutput('draft', String(pr.draft ?? false));
+            core.setOutput('title', pr.title ?? '');
+            core.setOutput('state', pr.state ?? '');
+
+      - name: Evaluate gates and merge
+        if: steps.pr.outcome == 'success'
+        env:
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+          PR_AUTHOR: ${{ steps.pr.outputs.author }}
+          PR_DRAFT: ${{ steps.pr.outputs.draft }}
+          PR_TITLE: ${{ steps.pr.outputs.title }}
+          PR_STATE: ${{ steps.pr.outputs.state }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          REPO="${GITHUB_REPOSITORY}"
+          REQUIRED_CHECKS=("Build code and test" "build_android" "build_ios" "guard_swiftpm_version")
+          IGNORE_CHECK_SUBSTR=("Socket" "SonarCloud" "smith" "cubic" "Renovate AI automerge")
+          CODERABBIT_LOGIN="coderabbitai[bot]"
+          POLL_SECONDS=30
+          MAX_WAIT_SECONDS=1800
+
+          log() { echo "::notice::$*"; }
+          skip() { log "$1"; exit 0; }
+          fail() { echo "::error::$1"; exit 1; }
+
+          if [[ "${PR_STATE}" != "open" ]]; then
+            skip "PR #${PR_NUMBER} is not open (${PR_STATE})"
+          fi
+
+          if [[ "${PR_DRAFT}" == "true" ]]; then
+            skip "PR #${PR_NUMBER} is a draft"
+          fi
+
+          if [[ "${PR_AUTHOR}" != "renovate[bot]" && "${PR_AUTHOR}" != "app/renovate" ]]; then
+            skip "PR #${PR_NUMBER} author is not Renovate (${PR_AUTHOR})"
+          fi
+
+          MERGED_AT="$(gh pr view "${PR_NUMBER}" --repo "${REPO}" --json mergedAt -q '.mergedAt')"
+          if [[ -n "${MERGED_AT}" && "${MERGED_AT}" != "null" ]]; then
+            skip "PR #${PR_NUMBER} is already merged"
+          fi
+
+          mapfile -t CHANGED_FILES < <(gh pr diff "${PR_NUMBER}" --repo "${REPO}" --name-only)
+          if [[ ${#CHANGED_FILES[@]} -eq 0 ]]; then
+            skip "PR #${PR_NUMBER} has no changed files"
+          fi
+
+          SCOPE_OK=false
+          if echo "${PR_TITLE}" | grep -qiE 'actions/|github-actions'; then
+            SCOPE_OK=true
+          else
+            SCOPE_OK=true
+            for file in "${CHANGED_FILES[@]}"; do
+              [[ -z "${file}" ]] && continue
+              if [[ "${file}" == .github/workflows/* || "${file}" == renovate.json ]]; then
+                continue
+              fi
+              SCOPE_OK=false
+              break
+            done
+          fi
+
+          if [[ "${SCOPE_OK}" != "true" ]]; then
+            skip "PR #${PR_NUMBER} is outside GitHub Actions automerge scope"
+          fi
+
+          should_ignore_check() {
+            local name="$1"
+            for pattern in "${IGNORE_CHECK_SUBSTR[@]}"; do
+              if [[ "${name}" == *"${pattern}"* ]]; then
+                return 0
+              fi
+            done
+            return 1
+          }
+
+          check_matches_required() {
+            local check_name="$1"
+            local required="$2"
+            [[ "${check_name}" == "${required}" ]] && return 0
+            [[ "${check_name}" == *"/ ${required}" ]] && return 0
+            return 1
+          }
+
+          fetch_check_runs() {
+            gh api "repos/${REPO}/commits/${HEAD_SHA}/check-runs" --paginate \
+              --jq '.check_runs[] | [.name, .status, (.conclusion // "")] | @tsv'
+          }
+
+          evaluate_required_checks() {
+            local pending=false
+            local failed=false
+
+            for required in "${REQUIRED_CHECKS[@]}"; do
+              local found=false
+              local satisfied=false
+
+              while IFS=$'\t' read -r name status conclusion; do
+                [[ -n "${name}" ]] || continue
+                if should_ignore_check "${name}"; then
+                  continue
+                fi
+                if ! check_matches_required "${name}" "${required}"; then
+                  continue
+                fi
+                found=true
+                if [[ "${status}" != "completed" ]]; then
+                  pending=true
+                elif [[ "${conclusion}" == "success" || "${conclusion}" == "skipped" || "${conclusion}" == "neutral" ]]; then
+                  satisfied=true
+                else
+                  echo "::error::Required check failed: ${name} (${conclusion})"
+                  failed=true
+                fi
+              done < <(fetch_check_runs)
+
+              if [[ "${found}" != "true" ]]; then
+                pending=true
+              elif [[ "${satisfied}" != "true" && "${failed}" != "true" ]]; then
+                pending=true
+              fi
+            done
+
+            if [[ "${failed}" == "true" ]]; then
+              return 2
+            fi
+            if [[ "${pending}" == "true" ]]; then
+              return 1
+            fi
+            return 0
+          }
+
+          wait_for_required_checks() {
+            local start
+            start="$(date +%s)"
+            while true; do
+              set +e
+              evaluate_required_checks
+              local result=$?
+              set -e
+              if [[ "${result}" -eq 0 ]]; then
+                log "All required checks passed on ${HEAD_SHA}"
+                return 0
+              fi
+              if [[ "${result}" -eq 2 ]]; then
+                fail "Required checks failed for PR #${PR_NUMBER}"
+              fi
+              if (( $(date +%s) - start >= MAX_WAIT_SECONDS )); then
+                skip "Timed out after ${MAX_WAIT_SECONDS}s waiting for required checks on PR #${PR_NUMBER}"
+              fi
+              log "Waiting for required checks on ${HEAD_SHA}..."
+              sleep "${POLL_SECONDS}"
+            done
+          }
+
+          has_coderabbit_approval() {
+            gh api "repos/${REPO}/pulls/${PR_NUMBER}/reviews" --paginate \
+              --jq --arg sha "${HEAD_SHA}" --arg bot "${CODERABBIT_LOGIN}" '
+                [.[]
+                  | select(.user.login == $bot and .state == "APPROVED" and .commit_id == $sha)
+                ] | length > 0'
+          }
+
+          has_coderabbit_changes_requested() {
+            gh api "repos/${REPO}/pulls/${PR_NUMBER}/reviews" --paginate \
+              --jq --arg sha "${HEAD_SHA}" --arg bot "${CODERABBIT_LOGIN}" '
+                [.[]
+                  | select(.user.login == $bot and .state == "CHANGES_REQUESTED" and .commit_id == $sha)
+                ] | length > 0'
+          }
+
+          wait_for_required_checks
+
+          if [[ "$(has_coderabbit_changes_requested)" == "true" ]]; then
+            skip "CodeRabbit requested changes on ${HEAD_SHA} for PR #${PR_NUMBER}"
+          fi
+
+          if [[ "$(has_coderabbit_approval)" != "true" ]]; then
+            skip "CodeRabbit has not approved ${HEAD_SHA} for PR #${PR_NUMBER}"
+          fi
+
+          log "Gates passed for PR #${PR_NUMBER}; merging"
+          gh pr merge "${PR_NUMBER}" --repo "${REPO}" --squash --delete-branch
+          gh pr comment "${PR_NUMBER}" --repo "${REPO}" \
+            --body "AI review approved + CI green → auto-merged"
