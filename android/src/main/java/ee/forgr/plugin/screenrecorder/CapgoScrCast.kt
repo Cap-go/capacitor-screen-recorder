@@ -87,6 +87,11 @@ class CapgoScrCast private constructor(
                     val error = intent.getSerializableExtra(EXTRA_ERROR) as? Throwable
                     if (error != null) {
                         startListener?.onFailed(error)
+                    } else if (startPending) {
+                        // The session ended before recording started and no
+                        // failure was reported (e.g. the service was destroyed
+                        // first) — settle the kept-alive start call anyway.
+                        startListener?.onFailed(IllegalStateException("Recording stopped before it started"))
                     }
                     val savedPath = cleanupSession()
                     if (!startPending && sessionActive && !stopRequested) {
