@@ -296,7 +296,13 @@ class CapgoRecorderService : Service() {
     private inner class MediaProjectionCallback : MediaProjection.Callback() {
         override fun onStop() {
             Log.d("scrcast", "projection on stop")
+            // The projection was stopped outside of stopRecording() — the user
+            // tapped the system "Stop sharing" control — so finalize the
+            // recording and publish Idle here, or the plugin would never learn
+            // that the session ended.
             cleanupProjection()
+            state = RecordingState.Idle()
+            stopForeground(true)
         }
     }
 
