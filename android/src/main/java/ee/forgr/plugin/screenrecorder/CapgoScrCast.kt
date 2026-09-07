@@ -257,7 +257,7 @@ class CapgoScrCast private constructor(
         fun onFailed(error: Throwable)
     }
 
-    interface ExternalStopListener {
+    fun interface ExternalStopListener {
         fun onExternalStop(path: String?, error: String?)
     }
 
