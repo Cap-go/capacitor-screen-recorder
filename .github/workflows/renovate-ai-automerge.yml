@@ -228,33 +228,35 @@ jobs:
             done
           }
 
-          has_coderabbit_approval() {
+          get_coderabbit_review_state() {
             gh api "repos/${REPO}/pulls/${PR_NUMBER}/reviews" --paginate \
               --jq --arg sha "${HEAD_SHA}" --arg bot "${CODERABBIT_LOGIN}" '
                 [.[]
-                  | select(.user.login == $bot and .state == "APPROVED" and .commit_id == $sha)
-                ] | length > 0'
-          }
-
-          has_coderabbit_changes_requested() {
-            gh api "repos/${REPO}/pulls/${PR_NUMBER}/reviews" --paginate \
-              --jq --arg sha "${HEAD_SHA}" --arg bot "${CODERABBIT_LOGIN}" '
-                [.[]
-                  | select(.user.login == $bot and .state == "CHANGES_REQUESTED" and .commit_id == $sha)
-                ] | length > 0'
+                  | select(
+                      .user.login == $bot
+                      and .commit_id == $sha
+                      and .state != "PENDING"
+                      and .state != "DISMISSED"
+                    )
+                ]
+                | sort_by(.submitted_at)
+                | last
+                | .state // ""'
           }
 
           wait_for_required_checks
 
-          if [[ "$(has_coderabbit_changes_requested)" == "true" ]]; then
+          CODERABBIT_STATE="$(get_coderabbit_review_state)"
+          if [[ "${CODERABBIT_STATE}" == "CHANGES_REQUESTED" ]]; then
             skip "CodeRabbit requested changes on ${HEAD_SHA} for PR #${PR_NUMBER}"
           fi
 
-          if [[ "$(has_coderabbit_approval)" != "true" ]]; then
-            skip "CodeRabbit has not approved ${HEAD_SHA} for PR #${PR_NUMBER}"
+          if [[ "${CODERABBIT_STATE}" != "APPROVED" ]]; then
+            skip "CodeRabbit has not approved ${HEAD_SHA} for PR #${PR_NUMBER} (state: ${CODERABBIT_STATE:-none})"
           fi
 
           log "Gates passed for PR #${PR_NUMBER}; merging"
-          gh pr merge "${PR_NUMBER}" --repo "${REPO}" --squash --delete-branch
+          gh pr merge "${PR_NUMBER}" --repo "${REPO}" --squash --delete-branch \
+            --match-head-commit "${HEAD_SHA}"
           gh pr comment "${PR_NUMBER}" --repo "${REPO}" \
             --body "AI review approved + CI green → auto-merged"
