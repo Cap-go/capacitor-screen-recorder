@@ -166,6 +166,9 @@ class CapgoScrCast private constructor(
     }
 
     fun stopRecording() {
+        if (recordingSession == null) {
+            return
+        }
         stopRequested = true
         broadcaster.sendBroadcast(Intent(Action.Stop.name))
     }
@@ -181,6 +184,7 @@ class CapgoScrCast private constructor(
 
     private fun startService(result: ActivityResult, file: File) {
         outputFile = file
+        stopRequested = false
         val session = Intent(activity, CapgoRecorderService::class.java).apply {
             putExtra("code", result.resultCode)
             putExtra("data", result.data)
@@ -213,6 +217,7 @@ class CapgoScrCast private constructor(
         unregisterRecordingReceiver()
         recordingSession = null
         outputFile = null
+        stopRequested = false
         notifyStartFailed(error)
     }
 
