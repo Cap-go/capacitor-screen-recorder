@@ -303,9 +303,11 @@ public final class ScreenRecorder: NSObject {
 }
 
 extension ScreenRecorder: RPScreenRecorderDelegate {
-    public func screenRecorder(_ screenRecorder: RPScreenRecorder,
-                               didStopRecordingWithError error: Error,
-                               previewViewController: RPPreviewViewController?) {
+    public func screenRecorder(
+        _: RPScreenRecorder,
+        didStopRecordingWithError error: Error,
+        previewViewController _: RPPreviewViewController?
+    ) {
         handleRecordingEndedExternally(error: error)
     }
 }
