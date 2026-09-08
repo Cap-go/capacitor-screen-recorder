@@ -74,11 +74,16 @@ public final class ScreenRecorder {
 
         recorder.isMicrophoneEnabled = recordAudio
 
+        var attemptOutputURL: URL?
+        var attemptDidCreate = false
+
         do {
             if recordAudio {
                 try configureAudioSession()
             }
             try createVideoWriter(in: outputURL)
+            attemptOutputURL = self.videoOutputURL
+            attemptDidCreate = self.didCreateOutputFile
             addVideoWriterInput(size: size)
             if recordAudio {
                 self.micAudioWriterInput = createAndAddAudioInput()
@@ -86,7 +91,10 @@ public final class ScreenRecorder {
             }
             startCapture(handler: handler)
         } catch let err {
-            self.deleteOutputFileIfNeeded()
+            self.deleteOutputFileIfNeeded(
+                outputURL: attemptOutputURL ?? self.videoOutputURL,
+                didCreate: attemptOutputURL != nil ? attemptDidCreate : self.didCreateOutputFile
+            )
             handler(err)
         }
     }
