@@ -1,17 +1,22 @@
 import AVFoundation
 import CoreMedia
 
+private struct QueuedMic {
+    let buffer: CMSampleBuffer
+    var consumedFrames: Int
+}
+
 final class ReplayKitAudioTrackMixer {
-    private var micQueue: [CMSampleBuffer] = []
+    private var micQueue: [QueuedMic] = []
     private var pendingAppQueue: [CMSampleBuffer] = []
     private var referenceAppBuffer: CMSampleBuffer?
     private let maxMicQueueSize = 128
 
     func handleMic(_ sampleBuffer: CMSampleBuffer) -> [CMSampleBuffer] {
-        micQueue.append(sampleBuffer)
+        micQueue.append(QueuedMic(buffer: sampleBuffer, consumedFrames: 0))
         var outputs: [CMSampleBuffer] = []
         while micQueue.count > maxMicQueueSize {
-            let micOnly = micQueue.removeFirst()
+            let micOnly = micQueue.removeFirst().buffer
             if let normalized = Self.normalizeForWriter(micOnly, reference: referenceAppBuffer) {
                 outputs.append(normalized)
             }
@@ -29,15 +34,27 @@ final class ReplayKitAudioTrackMixer {
     }
 
     func drain() -> [CMSampleBuffer] {
-        var outputs = emitReadySamples()
-        for mic in micQueue {
-            if let normalized = Self.normalizeForWriter(mic, reference: referenceAppBuffer) {
-                outputs.append(normalized)
+        var outputs: [CMSampleBuffer] = []
+        while !micQueue.isEmpty || !pendingAppQueue.isEmpty {
+            let remainingCount = micQueue.count + pendingAppQueue.count
+            outputs.append(contentsOf: emitReadySamples())
+            if micQueue.count + pendingAppQueue.count == remainingCount {
+                break
+            }
+        }
+
+        var remaining: [(CMTime, CMSampleBuffer)] = []
+        for queuedMic in micQueue {
+            if let normalized = Self.normalizeForWriter(queuedMic.buffer, reference: referenceAppBuffer) {
+                remaining.append((Self.startTime(of: normalized), normalized))
             }
         }
         for app in pendingAppQueue {
-            outputs.append(app)
+            remaining.append((Self.startTime(of: app), app))
         }
+        remaining.sort { CMTimeCompare($0.0, $1.0) < 0 }
+        outputs.append(contentsOf: remaining.map(\.1))
+
         micQueue.removeAll()
         pendingAppQueue.removeAll()
         return outputs
@@ -46,12 +63,12 @@ final class ReplayKitAudioTrackMixer {
     private func emitReadySamples() -> [CMSampleBuffer] {
         var outputs: [CMSampleBuffer] = []
 
-        while let mic = micQueue.first {
+        while let queuedMic = micQueue.first {
             let nextAppStart = pendingAppQueue.first.map { Self.startTime(of: $0) }
             guard let appStart = nextAppStart else { break }
-            if CMTimeCompare(Self.endTime(of: mic), appStart) <= 0 {
+            if CMTimeCompare(Self.endTime(of: queuedMic.buffer, consumedFrames: queuedMic.consumedFrames), appStart) <= 0 {
                 micQueue.removeFirst()
-                if let normalized = Self.normalizeForWriter(mic, reference: referenceAppBuffer) {
+                if let normalized = Self.normalizeForWriter(queuedMic.buffer, reference: referenceAppBuffer) {
                     outputs.append(normalized)
                 }
             } else {
@@ -60,22 +77,29 @@ final class ReplayKitAudioTrackMixer {
         }
 
         while let app = pendingAppQueue.first,
-              let mic = micQueue.first,
-              Self.rangesOverlap(mic, app) {
-            pendingAppQueue.removeFirst()
-            micQueue.removeFirst()
-            if let mixed = ReplayKitAudioMixer.mix(app: app, mic: mic) {
-                outputs.append(mixed)
+              let queuedMic = micQueue.first,
+              Self.rangesOverlap(queuedMic, app) {
+            if let result = ReplayKitAudioMixer.mix(
+                app: app,
+                mic: queuedMic.buffer,
+                micFrameOffset: queuedMic.consumedFrames
+            ) {
+                pendingAppQueue.removeFirst()
+                outputs.append(result.sample)
+                if result.micFramesConsumed >= CMSampleBufferGetNumSamples(queuedMic.buffer) {
+                    micQueue.removeFirst()
+                } else {
+                    micQueue[0].consumedFrames = result.micFramesConsumed
+                }
             } else {
-                outputs.append(app)
-                micQueue.insert(mic, at: 0)
                 break
             }
         }
 
         while let app = pendingAppQueue.first {
-            if let mic = micQueue.first {
-                if CMTimeCompare(Self.startTime(of: mic), Self.endTime(of: app)) > 0 {
+            if let queuedMic = micQueue.first {
+                if CMTimeCompare(Self.startTime(of: queuedMic.buffer, consumedFrames: queuedMic.consumedFrames),
+                                Self.endTime(of: app)) > 0 {
                     pendingAppQueue.removeFirst()
                     outputs.append(app)
                 } else {
@@ -90,12 +114,17 @@ final class ReplayKitAudioTrackMixer {
         return outputs
     }
 
-    private static func startTime(of buffer: CMSampleBuffer) -> CMTime {
-        CMSampleBufferGetPresentationTimeStamp(buffer)
+    private static func startTime(of buffer: CMSampleBuffer, consumedFrames: Int = 0) -> CMTime {
+        guard consumedFrames > 0 else {
+            return CMSampleBufferGetPresentationTimeStamp(buffer)
+        }
+        let sampleRate = sampleRate(of: buffer)
+        let consumedDuration = CMTime(value: CMTimeValue(consumedFrames), timescale: CMTimeScale(sampleRate))
+        return CMTimeAdd(CMSampleBufferGetPresentationTimeStamp(buffer), consumedDuration)
     }
 
-    private static func endTime(of buffer: CMSampleBuffer) -> CMTime {
-        CMTimeRangeGetEnd(timeRange(of: buffer))
+    private static func endTime(of buffer: CMSampleBuffer, consumedFrames: Int = 0) -> CMTime {
+        CMTimeRangeGetEnd(timeRange(of: buffer, consumedFrames: consumedFrames))
     }
 
     private static func sampleRate(of buffer: CMSampleBuffer) -> Double {
@@ -106,20 +135,19 @@ final class ReplayKitAudioTrackMixer {
         return asbd.mSampleRate
     }
 
-    private static func timeRange(of buffer: CMSampleBuffer) -> CMTimeRange {
-        let start = CMSampleBufferGetPresentationTimeStamp(buffer)
-        let duration = CMSampleBufferGetDuration(buffer)
-        if duration.isValid, duration > .zero {
-            return CMTimeRange(start: start, duration: duration)
-        }
-
-        let frames = CMSampleBufferGetNumSamples(buffer)
+    private static func timeRange(of buffer: CMSampleBuffer, consumedFrames: Int = 0) -> CMTimeRange {
+        let start = startTime(of: buffer, consumedFrames: consumedFrames)
+        let totalFrames = CMSampleBufferGetNumSamples(buffer)
+        let remainingFrames = max(0, totalFrames - consumedFrames)
         let timescale = CMTimeScale(sampleRate(of: buffer))
-        return CMTimeRange(start: start, duration: CMTime(value: CMTimeValue(frames), timescale: timescale))
+        return CMTimeRange(start: start, duration: CMTime(value: CMTimeValue(remainingFrames), timescale: timescale))
     }
 
-    private static func rangesOverlap(_ lhs: CMSampleBuffer, _ rhs: CMSampleBuffer) -> Bool {
-        let intersection = CMTimeRangeGetIntersection(timeRange(of: lhs), otherRange: timeRange(of: rhs))
+    private static func rangesOverlap(_ queuedMic: QueuedMic, _ app: CMSampleBuffer) -> Bool {
+        let intersection = CMTimeRangeGetIntersection(
+            timeRange(of: queuedMic.buffer, consumedFrames: queuedMic.consumedFrames),
+            otherRange: timeRange(of: app)
+        )
         return intersection.duration.isValid && intersection.duration > .zero
     }
 
@@ -130,7 +158,12 @@ final class ReplayKitAudioTrackMixer {
 }
 
 enum ReplayKitAudioMixer {
-    static func mix(app: CMSampleBuffer, mic: CMSampleBuffer) -> CMSampleBuffer? {
+    struct MixResult {
+        let sample: CMSampleBuffer
+        let micFramesConsumed: Int
+    }
+
+    static func mix(app: CMSampleBuffer, mic: CMSampleBuffer, micFrameOffset: Int = 0) -> MixResult? {
         guard CMSampleBufferDataIsReady(app), CMSampleBufferDataIsReady(mic) else { return nil }
 
         guard let appFormat = CMSampleBufferGetFormatDescription(app),
@@ -155,8 +188,11 @@ enum ReplayKitAudioMixer {
         guard intersection.duration.isValid, intersection.duration > .zero else { return nil }
 
         let sampleRate = appAsbd.mSampleRate
+        let micStartFrame = max(
+            micFrameOffset,
+            frameOffset(for: intersection.start, relativeTo: micRange.start, sampleRate: sampleRate)
+        )
         let appStartFrame = frameOffset(for: intersection.start, relativeTo: appRange.start, sampleRate: sampleRate)
-        let micStartFrame = frameOffset(for: intersection.start, relativeTo: micRange.start, sampleRate: sampleRate)
         let mixFrames = frameCount(for: intersection.duration, sampleRate: sampleRate)
         guard mixFrames > 0 else { return nil }
 
@@ -230,7 +266,7 @@ enum ReplayKitAudioMixer {
         }
         guard replaceStatus == noErr else { return nil }
 
-        return output
+        return MixResult(sample: output, micFramesConsumed: micStartFrame + frames)
     }
 
     static func matchFormat(_ buffer: CMSampleBuffer, to reference: CMSampleBuffer) -> CMSampleBuffer? {
