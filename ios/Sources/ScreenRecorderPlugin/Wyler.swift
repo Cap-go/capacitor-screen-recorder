@@ -313,14 +313,14 @@ public final class ScreenRecorder {
                                                       handler: @escaping (Error?) -> Void) {
         let capturedOutputURL = outputURL ?? self.videoOutputURL
         let capturedDidCreate = didCreate ?? self.didCreateOutputFile
-        let status = PHPhotoLibrary.authorizationStatus(for: .addOnly)
+        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
 
         if canSaveToPhotoLibrary(status) {
             self.saveVideoToCameraRoll(outputURL: capturedOutputURL,
                                        didCreate: capturedDidCreate,
                                        handler: handler)
         } else {
-            PHPhotoLibrary.requestAuthorization(for: .addOnly, handler: { (status) in
+            PHPhotoLibrary.requestAuthorization(for: .readWrite, handler: { (status) in
                 if self.canSaveToPhotoLibrary(status) {
                     self.saveVideoToCameraRoll(outputURL: capturedOutputURL,
                                                didCreate: capturedDidCreate,
@@ -350,6 +350,7 @@ public final class ScreenRecorder {
                 self.deleteOutputFileIfNeeded(outputURL: videoOutputURL, didCreate: didCreate)
                 handler(nil)
             } else {
+                self.deleteOutputFileIfNeeded(outputURL: videoOutputURL, didCreate: didCreate)
                 handler(NSError(domain: "ScreenRecorder",
                                 code: -1,
                                 userInfo: [NSLocalizedDescriptionKey: "Failed to save video to photo library"]))
