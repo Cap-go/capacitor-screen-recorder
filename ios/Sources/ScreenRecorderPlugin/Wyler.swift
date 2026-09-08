@@ -80,8 +80,15 @@ public final class ScreenRecorder {
             try createVideoWriter(in: outputURL)
             addVideoWriterInput(size: size)
             if recordAudio {
-                self.micAudioWriterInput = createAndAddAudioInput()
-                self.appAudioWriterInput = createAndAddAudioInput()
+                let micInput = createAudioInput()
+                let appInput = createAudioInput()
+                self.micAudioWriterInput = micInput
+                self.appAudioWriterInput = appInput
+                // ReplayKit delivers two audio tracks (mic + app). AVAssetWriter rejects a
+                // second ungrouped input of the same media type; they must share a group.
+                // See Cap-go/capacitor-screen-recorder#228.
+                let audioGroup = AVAssetWriterInputGroup(inputs: [micInput, appInput], defaultInput: micInput)
+                videoWriter?.add(audioGroup)
             }
             startCapture(handler: handler)
         } catch let err {
@@ -140,10 +147,9 @@ public final class ScreenRecorder {
         videoWriter?.add(newVideoWriterInput)
     }
 
-    private func createAndAddAudioInput() -> AVAssetWriterInput {
+    private func createAudioInput() -> AVAssetWriterInput {
         let audioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: nil)
         audioInput.expectsMediaDataInRealTime = true
-        videoWriter?.add(audioInput)
         return audioInput
     }
 
