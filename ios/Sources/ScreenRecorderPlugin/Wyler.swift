@@ -158,6 +158,13 @@ public final class ScreenRecorder {
         recorder.startCapture(handler: { (sampleBuffer, sampleType, passedError) in
             if let passedError = passedError {
                 if !sent {
+                    self.videoWriterInput?.markAsFinished()
+                    self.micAudioWriterInput?.markAsFinished()
+                    self.appAudioWriterInput?.markAsFinished()
+                    if self.videoWriter?.status == .writing {
+                        self.videoWriter?.cancelWriting()
+                    }
+                    self.deleteOutputFileIfNeeded()
                     handler(passedError)
                     sent = true
                 }
@@ -205,7 +212,17 @@ public final class ScreenRecorder {
 
     public func stoprecording(handler: @escaping (Error?) -> Void) {
         recorder.stopCapture(handler: { error in
+            let outputURL = self.videoOutputURL
+            let didCreate = self.didCreateOutputFile
+
             if let error = error {
+                self.videoWriterInput?.markAsFinished()
+                self.micAudioWriterInput?.markAsFinished()
+                self.appAudioWriterInput?.markAsFinished()
+                if self.videoWriter?.status == .writing {
+                    self.videoWriter?.cancelWriting()
+                }
+                self.deleteOutputFileIfNeeded(outputURL: outputURL, didCreate: didCreate)
                 handler(error)
                 return
             }
@@ -222,48 +239,63 @@ public final class ScreenRecorder {
             if writer.status == .writing {
                 writer.finishWriting {
                     if let finishError = writer.error {
-                        self.deleteOutputFileIfNeeded()
+                        self.deleteOutputFileIfNeeded(outputURL: outputURL, didCreate: didCreate)
                         handler(finishError)
                         return
                     }
                     if self.saveToCameraRoll {
-                        self.saveVideoToCameraRollAfterAuthorized(handler: handler)
+                        self.saveVideoToCameraRollAfterAuthorized(outputURL: outputURL,
+                                                                    didCreate: didCreate,
+                                                                    handler: handler)
                     } else {
-                        self.deleteOutputFileIfNeeded()
+                        self.deleteOutputFileIfNeeded(outputURL: outputURL, didCreate: didCreate)
                         handler(nil)
                     }
                 }
             } else if writer.status == .failed {
-                self.deleteOutputFileIfNeeded()
+                self.deleteOutputFileIfNeeded(outputURL: outputURL, didCreate: didCreate)
                 handler(writer.error)
             } else {
                 if self.saveToCameraRoll {
-                    self.saveVideoToCameraRollAfterAuthorized(handler: handler)
+                    self.saveVideoToCameraRollAfterAuthorized(outputURL: outputURL,
+                                                                didCreate: didCreate,
+                                                                handler: handler)
                 } else {
-                    self.deleteOutputFileIfNeeded()
+                    self.deleteOutputFileIfNeeded(outputURL: outputURL, didCreate: didCreate)
                     handler(nil)
                 }
             }
         })
     }
 
-    private func saveVideoToCameraRollAfterAuthorized(handler: @escaping (Error?) -> Void) {
+    private func saveVideoToCameraRollAfterAuthorized(outputURL: URL? = nil,
+                                                      didCreate: Bool? = nil,
+                                                      handler: @escaping (Error?) -> Void) {
+        let capturedOutputURL = outputURL ?? self.videoOutputURL
+        let capturedDidCreate = didCreate ?? self.didCreateOutputFile
+
         if PHPhotoLibrary.authorizationStatus() == .authorized {
-            self.saveVideoToCameraRoll(handler: handler)
+            self.saveVideoToCameraRoll(outputURL: capturedOutputURL,
+                                       didCreate: capturedDidCreate,
+                                       handler: handler)
         } else {
             PHPhotoLibrary.requestAuthorization({ (status) in
                 if status == .authorized {
-                    self.saveVideoToCameraRoll(handler: handler)
+                    self.saveVideoToCameraRoll(outputURL: capturedOutputURL,
+                                               didCreate: capturedDidCreate,
+                                               handler: handler)
                 } else {
-                    self.deleteOutputFileIfNeeded()
+                    self.deleteOutputFileIfNeeded(outputURL: capturedOutputURL, didCreate: capturedDidCreate)
                     handler(ScreenRecorderError.photoLibraryAccessNotGranted)
                 }
             })
         }
     }
 
-    private func saveVideoToCameraRoll(handler: @escaping (Error?) -> Void) {
-        guard let videoOutputURL = self.videoOutputURL else {
+    private func saveVideoToCameraRoll(outputURL: URL?,
+                                       didCreate: Bool,
+                                       handler: @escaping (Error?) -> Void) {
+        guard let videoOutputURL = outputURL else {
             return handler(nil)
         }
 
@@ -271,21 +303,22 @@ public final class ScreenRecorder {
             PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: videoOutputURL)
         }, completionHandler: { _, error in
             if let error = error {
-                self.deleteOutputFileIfNeeded()
+                self.deleteOutputFileIfNeeded(outputURL: videoOutputURL, didCreate: didCreate)
                 handler(error)
             } else {
-                self.deleteOutputFileIfNeeded()
+                self.deleteOutputFileIfNeeded(outputURL: videoOutputURL, didCreate: didCreate)
                 handler(nil)
             }
         })
     }
 
-    private func deleteOutputFileIfNeeded() {
-        guard didCreateOutputFile, let videoOutputURL = self.videoOutputURL else { return }
+    private func deleteOutputFileIfNeeded(outputURL: URL? = nil, didCreate: Bool? = nil) {
+        let shouldDelete = didCreate ?? didCreateOutputFile
+        guard shouldDelete, let fileURL = outputURL ?? self.videoOutputURL else { return }
         do {
-            try FileManager.default.removeItem(at: videoOutputURL)
+            try FileManager.default.removeItem(at: fileURL)
         } catch {
-            debugPrint("Failed to delete recording file \(videoOutputURL): \(error)")
+            debugPrint("Failed to delete recording file \(fileURL): \(error)")
         }
     }
 }
