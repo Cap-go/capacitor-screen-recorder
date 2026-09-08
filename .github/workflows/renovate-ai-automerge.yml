@@ -120,20 +120,15 @@ jobs:
             skip "PR #${PR_NUMBER} has no changed files"
           fi
 
-          SCOPE_OK=false
-          if echo "${PR_TITLE}" | grep -qiE 'actions/|github-actions'; then
-            SCOPE_OK=true
-          else
-            SCOPE_OK=true
-            for file in "${CHANGED_FILES[@]}"; do
-              [[ -z "${file}" ]] && continue
-              if [[ "${file}" == .github/workflows/* || "${file}" == renovate.json ]]; then
-                continue
-              fi
-              SCOPE_OK=false
-              break
-            done
-          fi
+          SCOPE_OK=true
+          for file in "${CHANGED_FILES[@]}"; do
+            [[ -z "${file}" ]] && continue
+            if [[ "${file}" == .github/workflows/* || "${file}" == renovate.json ]]; then
+              continue
+            fi
+            SCOPE_OK=false
+            break
+          done
 
           if [[ "${SCOPE_OK}" != "true" ]]; then
             skip "PR #${PR_NUMBER} is outside GitHub Actions automerge scope"
@@ -244,7 +239,6 @@ jobs:
                         .user.login == $bot
                         and .commit_id == $sha
                         and .state != "PENDING"
-                        and .state != "DISMISSED"
                       )
                   ]
                 | sort_by(.submitted_at)
