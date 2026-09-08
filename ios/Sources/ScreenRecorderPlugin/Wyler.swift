@@ -313,14 +313,14 @@ public final class ScreenRecorder {
                                                       handler: @escaping (Error?) -> Void) {
         let capturedOutputURL = outputURL ?? self.videoOutputURL
         let capturedDidCreate = didCreate ?? self.didCreateOutputFile
-        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        let status = PHPhotoLibrary.authorizationStatus(for: .addOnly)
 
         if canSaveToPhotoLibrary(status) {
             self.saveVideoToCameraRoll(outputURL: capturedOutputURL,
                                        didCreate: capturedDidCreate,
                                        handler: handler)
         } else {
-            PHPhotoLibrary.requestAuthorization(for: .readWrite, handler: { (status) in
+            PHPhotoLibrary.requestAuthorization(for: .addOnly, handler: { (status) in
                 if self.canSaveToPhotoLibrary(status) {
                     self.saveVideoToCameraRoll(outputURL: capturedOutputURL,
                                                didCreate: capturedDidCreate,
