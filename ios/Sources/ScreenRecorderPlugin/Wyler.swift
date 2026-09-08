@@ -70,6 +70,7 @@ public final class ScreenRecorder: NSObject {
     private var videoWritingStarted = false
     private var isFinalizing = false
     private var captureSessionID: UInt64 = 0
+    private var delegateSessionID: UInt64 = 0
     private let stateLock = NSLock()
 
     private struct FinalizationSnapshot {
@@ -92,6 +93,23 @@ public final class ScreenRecorder: NSObject {
         return withStateLock {
             sessionID == captureSessionID && isRecording && !isFinalizing
         }
+    }
+
+    private func isActiveDelegateSession() -> Bool {
+        return withStateLock {
+            delegateSessionID != 0 &&
+                delegateSessionID == captureSessionID &&
+                isRecording &&
+                !isFinalizing &&
+                !stopRequested
+        }
+    }
+
+    private func invalidateDelegateSession() {
+        withStateLock {
+            delegateSessionID = 0
+        }
+        recorder.delegate = nil
     }
 
     private func nextCaptureSessionID() -> UInt64 {
@@ -223,7 +241,12 @@ public final class ScreenRecorder: NSObject {
         }
         recorder.stopCapture(handler: { [weak self] _ in
             guard let self = self else { return }
+            self.invalidateDelegateSession()
             guard self.isActiveCaptureSession(sessionID) else { return }
+            withStateLock {
+                delegateSessionID = sessionID
+            }
+            self.recorder.delegate = self
             self.recorder.startCapture(handler: { [weak self] (sampleBuffer, sampleType, passedError) in
                 guard let self = self else { return }
                 guard self.isActiveCaptureSession(sessionID) else { return }
@@ -332,6 +355,7 @@ public final class ScreenRecorder: NSObject {
             stopRequested = true
             isFinalizing = true
             captureSessionID += 1
+            delegateSessionID = 0
             return FinalizationSnapshot(
                 outputURL: videoOutputURL,
                 writer: videoWriter,
@@ -346,6 +370,7 @@ public final class ScreenRecorder: NSObject {
             handler(nil)
             return
         }
+        invalidateDelegateSession()
         recorder.stopCapture(handler: { error in
             if let error = error {
                 self.settlePendingStart(error)
@@ -450,6 +475,7 @@ public final class ScreenRecorder: NSObject {
             isRecording = false
             isFinalizing = true
             captureSessionID += 1
+            delegateSessionID = 0
             return FinalizationSnapshot(
                 outputURL: videoOutputURL,
                 writer: videoWriter,
@@ -461,6 +487,7 @@ public final class ScreenRecorder: NSObject {
             )
         }
         guard let snapshot else { return }
+        invalidateDelegateSession()
         finishWriterAndDeliver(snapshot: snapshot, handler: { finishError in
             let url = snapshot.hasVideoContent ? snapshot.outputURL : nil
             self.onExternalStop?(url, error ?? finishError)
@@ -504,10 +531,12 @@ extension ScreenRecorder: RPScreenRecorderDelegate {
         didStopRecordingWithError error: Error,
         previewViewController _: RPPreviewViewController?
     ) {
+        guard isActiveDelegateSession() else { return }
         // A stop before the first sample fails the still-pending start; only
         // a capture that was actually running is an external stop.
         if !settlePendingStart(error) {
             handleRecordingEndedExternally(error: error)
         }
+        invalidateDelegateSession()
     }
 }
