@@ -67,6 +67,7 @@ public final class ScreenRecorder: NSObject {
     private var isRecording = false
     private var stopRequested = false
     private var pendingStartHandler: ((Error?) -> Void)?
+    private var videoWritingStarted = false
 
     public func startRecording(to outputURL: URL? = nil,
                                size: CGSize? = nil,
@@ -109,6 +110,7 @@ public final class ScreenRecorder: NSObject {
         videoWriterInput = nil
         micAudioWriterInput = nil
         appAudioWriterInput = nil
+        videoWritingStarted = false
     }
 
     private func configureAudioSession() throws {
@@ -176,13 +178,16 @@ public final class ScreenRecorder: NSObject {
             if let passedError = passedError {
                 // Fails a still-pending start; once the start is settled the
                 // delegate owns the end-of-capture reporting.
-                self.settlePendingStart(passedError)
+                if !self.settlePendingStart(passedError) {
+                    self.handleRecordingEndedExternally(error: passedError)
+                }
                 return
             }
 
             switch sampleType {
             case .video:
                 self.handleSampleBuffer(sampleBuffer: sampleBuffer)
+                self.settlePendingStart(nil)
             case .audioApp:
                 if self.recordAudio {
                     self.add(sample: sampleBuffer, to: self.appAudioWriterInput)
@@ -194,7 +199,6 @@ public final class ScreenRecorder: NSObject {
             default:
                 break
             }
-            self.settlePendingStart(nil)
         })
     }
 
@@ -219,6 +223,7 @@ public final class ScreenRecorder: NSObject {
         if self.videoWriter?.status == AVAssetWriter.Status.unknown {
             self.videoWriter?.startWriting()
             self.videoWriter?.startSession(atSourceTime: CMSampleBufferGetPresentationTimeStamp(sampleBuffer))
+            videoWritingStarted = true
         } else if self.videoWriter?.status == AVAssetWriter.Status.writing &&
                     self.videoWriterInput?.isReadyForMoreMediaData == true {
             self.videoWriterInput?.append(sampleBuffer)
@@ -277,6 +282,10 @@ public final class ScreenRecorder: NSObject {
     }
 
     private func deliverOutput(url: URL?, handler: @escaping (Error?) -> Void) {
+        guard videoWritingStarted else {
+            handler(nil)
+            return
+        }
         if saveToCameraRoll {
             saveVideoToCameraRollAfterAuthorized(url: url, handler: handler)
         } else {
@@ -293,7 +302,8 @@ public final class ScreenRecorder: NSObject {
         let outputURL = videoOutputURL
         finishWriterAndDeliver(outputURL: outputURL, handler: { [weak self] finishError in
             guard let self = self else { return }
-            self.onExternalStop?(outputURL, error ?? finishError)
+            let url = self.videoWritingStarted ? outputURL : nil
+            self.onExternalStop?(url, error ?? finishError)
         })
     }
 

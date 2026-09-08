@@ -301,7 +301,12 @@ class CapgoRecorderService : Service() {
             // recording and publish Idle here, or the plugin would never learn
             // that the session ended.
             cleanupProjection()
-            state = RecordingState.Idle()
+            val error = if (state !is RecordingState.Recording) {
+                IllegalStateException("Recording stopped before it started")
+            } else {
+                null
+            }
+            state = RecordingState.Idle(error)
             stopForeground(true)
         }
     }
