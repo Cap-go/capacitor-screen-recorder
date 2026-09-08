@@ -112,6 +112,7 @@ class CapgoRecorderService : Service() {
         }
 
     private var mediaRecorder: MediaRecorder? = null
+    private var recordingStarted = false
 
 
     private fun createMediaRecorder(): MediaRecorder {
@@ -265,6 +266,7 @@ class CapgoRecorderService : Service() {
             virtualDisplay // touch
             try {
                 mediaRecorder?.start()
+                recordingStarted = true
                 state = RecordingState.Recording
                 notificationProvider.update(state)
             } catch (e: Exception) {
@@ -291,6 +293,7 @@ class CapgoRecorderService : Service() {
             mediaRecorder?.stop()
         }
         releaseRecorder()
+        recordingStarted = false
     }
 
     private inner class MediaProjectionCallback : MediaProjection.Callback() {
@@ -300,14 +303,23 @@ class CapgoRecorderService : Service() {
             // tapped the system "Stop sharing" control — so finalize the
             // recording and publish Idle here, or the plugin would never learn
             // that the session ended.
+            val hadStarted = recordingStarted
             cleanupProjection()
-            val error = if (state !is RecordingState.Recording) {
-                IllegalStateException("Recording stopped before it started")
-            } else {
-                null
+            when {
+                state is RecordingState.Idle -> {
+                    // stopRecording() already published Idle (with or without error).
+                }
+                !hadStarted -> {
+                    state = RecordingState.Idle(
+                        IllegalStateException("Recording stopped before it started"),
+                    )
+                    stopForeground(true)
+                }
+                else -> {
+                    state = RecordingState.Idle()
+                    stopForeground(true)
+                }
             }
-            state = RecordingState.Idle(error)
-            stopForeground(true)
         }
     }
 

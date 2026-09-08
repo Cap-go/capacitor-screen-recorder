@@ -223,10 +223,12 @@ public final class ScreenRecorder: NSObject {
         if self.videoWriter?.status == AVAssetWriter.Status.unknown {
             self.videoWriter?.startWriting()
             self.videoWriter?.startSession(atSourceTime: CMSampleBufferGetPresentationTimeStamp(sampleBuffer))
+        }
+        if self.videoWriter?.status == AVAssetWriter.Status.writing {
             videoWritingStarted = true
-        } else if self.videoWriter?.status == AVAssetWriter.Status.writing &&
-                    self.videoWriterInput?.isReadyForMoreMediaData == true {
-            self.videoWriterInput?.append(sampleBuffer)
+            if self.videoWriterInput?.isReadyForMoreMediaData == true {
+                self.videoWriterInput?.append(sampleBuffer)
+            }
         }
     }
 
@@ -241,6 +243,7 @@ public final class ScreenRecorder: NSObject {
     public func stoprecording(handler: @escaping (Error?) -> Void) {
         stopRequested = true
         let outputURL = videoOutputURL
+        let hadVideoContent = videoWritingStarted
         recorder.stopCapture(handler: { error in
             if let error = error {
                 self.settlePendingStart(error)
@@ -252,11 +255,19 @@ public final class ScreenRecorder: NSObject {
             // stop() may arrive before the first sample: settle the pending
             // start so the caller's start promise does not hang.
             self.settlePendingStart(ScreenRecorderError.captureInterrupted)
-            self.finishWriterAndDeliver(outputURL: outputURL, handler: handler)
+            self.finishWriterAndDeliver(
+                outputURL: outputURL,
+                hasVideoContent: hadVideoContent,
+                handler: handler
+            )
         })
     }
 
-    private func finishWriterAndDeliver(outputURL: URL?, handler: @escaping (Error?) -> Void) {
+    private func finishWriterAndDeliver(
+        outputURL: URL?,
+        hasVideoContent: Bool,
+        handler: @escaping (Error?) -> Void
+    ) {
         videoWriterInput?.markAsFinished()
         micAudioWriterInput?.markAsFinished()
         appAudioWriterInput?.markAsFinished()
@@ -272,17 +283,21 @@ public final class ScreenRecorder: NSObject {
                     handler(finishError)
                     return
                 }
-                self.deliverOutput(url: outputURL, handler: handler)
+                self.deliverOutput(url: outputURL, hasVideoContent: hasVideoContent, handler: handler)
             }
         } else if writer.status == .failed {
             handler(writer.error)
         } else {
-            self.deliverOutput(url: outputURL, handler: handler)
+            self.deliverOutput(url: outputURL, hasVideoContent: hasVideoContent, handler: handler)
         }
     }
 
-    private func deliverOutput(url: URL?, handler: @escaping (Error?) -> Void) {
-        guard videoWritingStarted else {
+    private func deliverOutput(
+        url: URL?,
+        hasVideoContent: Bool,
+        handler: @escaping (Error?) -> Void
+    ) {
+        guard hasVideoContent else {
             handler(nil)
             return
         }
@@ -300,11 +315,15 @@ public final class ScreenRecorder: NSObject {
         // a new startRecording() would otherwise republish the next
         // recording's URL (and save its file to the camera roll).
         let outputURL = videoOutputURL
-        finishWriterAndDeliver(outputURL: outputURL, handler: { [weak self] finishError in
-            guard let self = self else { return }
-            let url = self.videoWritingStarted ? outputURL : nil
-            self.onExternalStop?(url, error ?? finishError)
-        })
+        let hadVideoContent = videoWritingStarted
+        finishWriterAndDeliver(
+            outputURL: outputURL,
+            hasVideoContent: hadVideoContent,
+            handler: { finishError in
+                let url = hadVideoContent ? outputURL : nil
+                self.onExternalStop?(url, error ?? finishError)
+            }
+        )
     }
 
     private func saveVideoToCameraRollAfterAuthorized(url: URL?, handler: @escaping (Error?) -> Void) {
