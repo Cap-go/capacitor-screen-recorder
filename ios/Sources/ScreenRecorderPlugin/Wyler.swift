@@ -15,6 +15,8 @@ import UIKit
 public enum ScreenRecorderError: Error {
     case notAvailable
     case photoLibraryAccessNotGranted
+    case captureAlreadyPending
+    case captureInterrupted
 }
 
 public enum VideoContainerFormat {
@@ -159,21 +161,20 @@ public final class ScreenRecorder: NSObject {
         guard recorder.isAvailable else {
             return handler(ScreenRecorderError.notAvailable)
         }
+        guard pendingStartHandler == nil else {
+            return handler(ScreenRecorderError.captureAlreadyPending)
+        }
         isRecording = true
-        // Retained until the first sample settles the start, so the delegate
-        // can reject a start whose capture stopped before any sample arrived.
+        // The start is settled exactly once — by the first sample, a capture
+        // failure, the delegate, or stoprecording() — whichever comes first,
+        // so the plugin's start promise never hangs and never settles twice.
         pendingStartHandler = handler
-        var sent = false
-        recorder.startCapture(handler: { (sampleBuffer, sampleType, passedError) in
+        recorder.startCapture(handler: { [weak self] (sampleBuffer, sampleType, passedError) in
+            guard let self = self else { return }
             if let passedError = passedError {
-                if !sent {
-                    // The capture never started — clear the flag so a later
-                    // delegate callback cannot report this as an external stop.
-                    self.isRecording = false
-                    self.pendingStartHandler = nil
-                    handler(passedError)
-                    sent = true
-                }
+                // Fails a still-pending start; once the start is settled the
+                // delegate owns the end-of-capture reporting.
+                self.settlePendingStart(passedError)
                 return
             }
 
@@ -191,12 +192,25 @@ public final class ScreenRecorder: NSObject {
             default:
                 break
             }
-            if !sent {
-                self.pendingStartHandler = nil
-                handler(nil)
-                sent = true
-            }
+            self.settlePendingStart(nil)
         })
+    }
+
+    /// Settles the pending start exactly once. Returns true when this call
+    /// settled it. A failure also clears `isRecording`, because the capture
+    /// never produced output; once settled, end-of-capture reporting belongs
+    /// to the delegate / stoprecording().
+    @discardableResult
+    private func settlePendingStart(_ error: Error?) -> Bool {
+        guard let startHandler = pendingStartHandler else {
+            return false
+        }
+        pendingStartHandler = nil
+        if error != nil {
+            isRecording = false
+        }
+        startHandler(error)
+        return true
     }
 
     private func handleSampleBuffer(sampleBuffer: CMSampleBuffer) {
@@ -222,11 +236,15 @@ public final class ScreenRecorder: NSObject {
         let outputURL = videoOutputURL
         recorder.stopCapture(handler: { error in
             if let error = error {
+                self.settlePendingStart(error)
                 handler(error)
                 return
             }
 
             self.isRecording = false
+            // stop() may arrive before the first sample: settle the pending
+            // start so the caller's start promise does not hang.
+            self.settlePendingStart(ScreenRecorderError.captureInterrupted)
             self.finishWriterAndDeliver(outputURL: outputURL, handler: handler)
         })
     }
@@ -314,14 +332,10 @@ extension ScreenRecorder: RPScreenRecorderDelegate {
         didStopRecordingWithError error: Error,
         previewViewController _: RPPreviewViewController?
     ) {
-        if let startHandler = pendingStartHandler {
-            // The capture stopped before the first sample: settle the still
-            // pending start instead of reporting an external stop.
-            pendingStartHandler = nil
-            isRecording = false
-            startHandler(error)
-            return
+        // A stop before the first sample fails the still-pending start; only
+        // a capture that was actually running is an external stop.
+        if !settlePendingStart(error) {
+            handleRecordingEndedExternally(error: error)
         }
-        handleRecordingEndedExternally(error: error)
     }
 }
