@@ -306,8 +306,11 @@ class CapgoRecorderService : Service() {
             val hadStarted = recordingStarted
             cleanupProjection()
             when {
-                state is RecordingState.Idle -> {
-                    // stopRecording() already published Idle (with or without error).
+                state is RecordingState.Idle && (state as RecordingState.Idle).error != null -> {
+                    // stopRecording() already published Idle with an error.
+                }
+                state is RecordingState.Idle && hadStarted -> {
+                    // stopRecording() already published Idle for an active recording.
                 }
                 !hadStarted -> {
                     state = RecordingState.Idle(
