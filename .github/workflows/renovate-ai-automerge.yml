@@ -63,7 +63,7 @@ jobs:
             }
 
             if (!pr) {
-              core.setFailed('No pull request context for this event');
+              core.notice('No pull request context for this event');
               return;
             }
 
@@ -73,9 +73,13 @@ jobs:
             core.setOutput('draft', String(pr.draft ?? false));
             core.setOutput('title', pr.title ?? '');
             core.setOutput('state', pr.state ?? '');
+            core.setOutput(
+              'labels',
+              (pr.labels ?? []).map((label) => label.name).join(','),
+            );
 
       - name: Evaluate gates and merge
-        if: steps.pr.outcome == 'success'
+        if: steps.pr.outcome == 'success' && steps.pr.outputs.number != ''
         env:
           PR_NUMBER: ${{ steps.pr.outputs.number }}
           HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
@@ -83,6 +87,7 @@ jobs:
           PR_DRAFT: ${{ steps.pr.outputs.draft }}
           PR_TITLE: ${{ steps.pr.outputs.title }}
           PR_STATE: ${{ steps.pr.outputs.state }}
+          PR_LABELS: ${{ steps.pr.outputs.labels }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
@@ -118,6 +123,10 @@ jobs:
           mapfile -t CHANGED_FILES < <(gh pr diff "${PR_NUMBER}" --repo "${REPO}" --name-only)
           if [[ ${#CHANGED_FILES[@]} -eq 0 ]]; then
             skip "PR #${PR_NUMBER} has no changed files"
+          fi
+
+          if [[ ",${PR_LABELS}," != *",github-actions,"* ]]; then
+            skip "PR #${PR_NUMBER} is missing the github-actions label"
           fi
 
           SCOPE_OK=true
