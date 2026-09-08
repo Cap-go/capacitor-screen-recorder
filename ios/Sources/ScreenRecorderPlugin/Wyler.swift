@@ -100,15 +100,15 @@ public final class ScreenRecorder: NSObject {
                 return ScreenRecorderError.captureAlreadyPending
             }
             stopRequested = false
+            self.saveToCameraRoll = saveToCameraRoll
+            self.recordAudio = recordAudio
+            self.videoFormat = videoFormat
+            resetWriterState()
             return nil
         }
         if let rejectError {
             return handler(rejectError)
         }
-        self.saveToCameraRoll = saveToCameraRoll
-        self.recordAudio = recordAudio
-        self.videoFormat = videoFormat
-        resetWriterState()
         recorder.delegate = self
 
         recorder.isMicrophoneEnabled = recordAudio
@@ -117,11 +117,13 @@ public final class ScreenRecorder: NSObject {
             if recordAudio {
                 try configureAudioSession()
             }
-            try createVideoWriter(in: outputURL)
-            addVideoWriterInput(size: size)
-            if recordAudio {
-                self.micAudioWriterInput = createAndAddAudioInput()
-                self.appAudioWriterInput = createAndAddAudioInput()
+            try withStateLock {
+                try createVideoWriter(in: outputURL)
+                addVideoWriterInput(size: size)
+                if recordAudio {
+                    self.micAudioWriterInput = createAndAddAudioInput()
+                    self.appAudioWriterInput = createAndAddAudioInput()
+                }
             }
             startCapture(handler: handler)
         } catch let err {
@@ -134,9 +136,7 @@ public final class ScreenRecorder: NSObject {
         videoWriterInput = nil
         micAudioWriterInput = nil
         appAudioWriterInput = nil
-        withStateLock {
-            videoWritingStarted = false
-        }
+        videoWritingStarted = false
     }
 
     private func configureAudioSession() throws {
@@ -216,10 +216,17 @@ public final class ScreenRecorder: NSObject {
             case .video:
                 if self.handleSampleBuffer(sampleBuffer: sampleBuffer) {
                     self.settlePendingStart(nil)
-                } else if let writer = self.videoWriter, writer.status == .failed {
-                    let error = writer.error ?? ScreenRecorderError.captureInterrupted
-                    if !self.settlePendingStart(error) {
-                        self.handleRecordingEndedExternally(error: error)
+                } else {
+                    let error: Error? = self.withStateLock {
+                        guard let writer = videoWriter, writer.status == .failed else {
+                            return nil
+                        }
+                        return writer.error ?? ScreenRecorderError.captureInterrupted
+                    }
+                    if let error = error {
+                        if !self.settlePendingStart(error) {
+                            self.handleRecordingEndedExternally(error: error)
+                        }
                     }
                 }
             case .audioApp:
@@ -261,34 +268,36 @@ public final class ScreenRecorder: NSObject {
 
     @discardableResult
     private func handleSampleBuffer(sampleBuffer: CMSampleBuffer) -> Bool {
-        guard let writer = videoWriter else { return false }
-        if writer.status == AVAssetWriter.Status.unknown {
-            writer.startWriting()
-            if writer.status == .failed {
+        return withStateLock {
+            guard let writer = videoWriter else { return false }
+            if writer.status == AVAssetWriter.Status.unknown {
+                writer.startWriting()
+                if writer.status == .failed {
+                    return false
+                }
+                writer.startSession(atSourceTime: CMSampleBufferGetPresentationTimeStamp(sampleBuffer))
+                if writer.status == .failed {
+                    return false
+                }
+            }
+            guard writer.status == AVAssetWriter.Status.writing else {
                 return false
             }
-            writer.startSession(atSourceTime: CMSampleBufferGetPresentationTimeStamp(sampleBuffer))
-            if writer.status == .failed {
-                return false
-            }
-        }
-        guard writer.status == AVAssetWriter.Status.writing else {
-            return false
-        }
-        withStateLock {
             videoWritingStarted = true
+            if videoWriterInput?.isReadyForMoreMediaData == true {
+                videoWriterInput?.append(sampleBuffer)
+            }
+            return true
         }
-        if videoWriterInput?.isReadyForMoreMediaData == true {
-            videoWriterInput?.append(sampleBuffer)
-        }
-        return true
     }
 
     private func add(sample: CMSampleBuffer, to writerInput: AVAssetWriterInput?) {
-        guard let writerInput = writerInput else { return }
-        guard self.videoWriter?.status == .writing else { return }
-        if writerInput.isReadyForMoreMediaData {
-            writerInput.append(sample)
+        withStateLock {
+            guard let writerInput = writerInput else { return }
+            guard self.videoWriter?.status == .writing else { return }
+            if writerInput.isReadyForMoreMediaData {
+                writerInput.append(sample)
+            }
         }
     }
 

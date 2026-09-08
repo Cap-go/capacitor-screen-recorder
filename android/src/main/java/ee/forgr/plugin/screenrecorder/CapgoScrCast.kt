@@ -252,17 +252,20 @@ class CapgoScrCast private constructor(
         recordingSession = null
 
         val savedPath = outputFile?.absolutePath
-        savedPath?.let { path ->
+        val deliverablePath = savedPath?.let { path ->
             val file = File(path)
             if (file.isFile && file.length() > 0L) {
                 MediaScannerConnection.scanFile(activity, arrayOf(path), null) { path, uri ->
                     Log.i("CapgoScreenRecorder", "Saved recording: $path uri=$uri")
                 }
+                path
+            } else {
+                null
             }
         }
         outputFile = null
         CapgoRecordingCoordinator.release()
-        return savedPath
+        return deliverablePath
     }
 
     interface StartListener {
