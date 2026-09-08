@@ -157,14 +157,14 @@ public final class ScreenRecorder {
         var sent = false
         recorder.startCapture(handler: { (sampleBuffer, sampleType, passedError) in
             if let passedError = passedError {
+                self.videoWriterInput?.markAsFinished()
+                self.micAudioWriterInput?.markAsFinished()
+                self.appAudioWriterInput?.markAsFinished()
+                if self.videoWriter?.status == .writing {
+                    self.videoWriter?.cancelWriting()
+                }
+                self.deleteOutputFileIfNeeded()
                 if !sent {
-                    self.videoWriterInput?.markAsFinished()
-                    self.micAudioWriterInput?.markAsFinished()
-                    self.appAudioWriterInput?.markAsFinished()
-                    if self.videoWriter?.status == .writing {
-                        self.videoWriter?.cancelWriting()
-                    }
-                    self.deleteOutputFileIfNeeded()
                     handler(passedError)
                     sent = true
                 }
