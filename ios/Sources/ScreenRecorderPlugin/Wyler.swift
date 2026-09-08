@@ -74,6 +74,11 @@ public final class ScreenRecorder: NSObject {
                                recordAudio: Bool = false,
                                videoFormat: VideoContainerFormat = .mp4,
                                handler: @escaping (Error?) -> Void) {
+        // Reject before any writer/session state is touched: a second start
+        // while the first is still pending must not disturb the first capture.
+        guard pendingStartHandler == nil else {
+            return handler(ScreenRecorderError.captureAlreadyPending)
+        }
         self.saveToCameraRoll = saveToCameraRoll
         self.recordAudio = recordAudio
         self.videoFormat = videoFormat
@@ -160,9 +165,6 @@ public final class ScreenRecorder: NSObject {
     private func startCapture(handler: @escaping (Error?) -> Void) {
         guard recorder.isAvailable else {
             return handler(ScreenRecorderError.notAvailable)
-        }
-        guard pendingStartHandler == nil else {
-            return handler(ScreenRecorderError.captureAlreadyPending)
         }
         isRecording = true
         // The start is settled exactly once — by the first sample, a capture
