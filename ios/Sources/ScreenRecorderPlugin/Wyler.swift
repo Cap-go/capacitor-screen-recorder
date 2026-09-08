@@ -154,19 +154,18 @@ public final class ScreenRecorder: NSObject {
             invalidateDelegateSession()
             recorder.stopCapture(handler: { [weak self] _ in
                 guard let self = self else { return }
-                let shouldContinue = withStateLock {
-                    pendingRestartDrain && restartDrainGeneration == drainGeneration
-                }
-                guard shouldContinue else {
-                    withStateLock {
+                let shouldContinue = withStateLock { () -> Bool in
+                    guard pendingRestartDrain && restartDrainGeneration == drainGeneration else {
                         restartDrainInFlight = false
+                        return false
                     }
-                    handler(ScreenRecorderError.captureAlreadyPending)
-                    return
-                }
-                withStateLock {
                     pendingRestartDrain = false
                     restartDrainInFlight = false
+                    return true
+                }
+                guard shouldContinue else {
+                    handler(ScreenRecorderError.captureAlreadyPending)
+                    return
                 }
                 self.startRecording(
                     to: outputURL,
