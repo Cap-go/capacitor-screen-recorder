@@ -53,8 +53,8 @@ public final class ScreenRecorder {
     private var videoOutputURL: URL?
     private var videoWriter: AVAssetWriter?
     private var videoWriterInput: AVAssetWriterInput?
-    private var micAudioWriterInput: AVAssetWriterInput?
-    private var appAudioWriterInput: AVAssetWriterInput?
+    private var audioWriterInput: AVAssetWriterInput?
+    private var latestMicSampleBuffer: CMSampleBuffer?
     private var saveToCameraRoll = false
     private var recordAudio = false
     private var videoFormat: VideoContainerFormat = .mp4
@@ -80,15 +80,7 @@ public final class ScreenRecorder {
             try createVideoWriter(in: outputURL)
             addVideoWriterInput(size: size)
             if recordAudio {
-                let micInput = createAudioInput()
-                let appInput = createAudioInput()
-                self.micAudioWriterInput = micInput
-                self.appAudioWriterInput = appInput
-                // ReplayKit delivers two audio tracks (mic + app). AVAssetWriter rejects a
-                // second ungrouped input of the same media type; they must share a group.
-                // See Cap-go/capacitor-screen-recorder#228.
-                let audioGroup = AVAssetWriterInputGroup(inputs: [micInput, appInput], defaultInput: micInput)
-                videoWriter?.add(audioGroup)
+                self.audioWriterInput = createAndAddAudioInput()
             }
             startCapture(handler: handler)
         } catch let err {
@@ -99,8 +91,8 @@ public final class ScreenRecorder {
     private func resetWriterState() {
         videoWriter = nil
         videoWriterInput = nil
-        micAudioWriterInput = nil
-        appAudioWriterInput = nil
+        audioWriterInput = nil
+        latestMicSampleBuffer = nil
     }
 
     private func configureAudioSession() throws {
@@ -147,9 +139,10 @@ public final class ScreenRecorder {
         videoWriter?.add(newVideoWriterInput)
     }
 
-    private func createAudioInput() -> AVAssetWriterInput {
+    private func createAndAddAudioInput() -> AVAssetWriterInput {
         let audioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: nil)
         audioInput.expectsMediaDataInRealTime = true
+        videoWriter?.add(audioInput)
         return audioInput
     }
 
@@ -172,11 +165,12 @@ public final class ScreenRecorder {
                 self.handleSampleBuffer(sampleBuffer: sampleBuffer)
             case .audioApp:
                 if self.recordAudio {
-                    self.add(sample: sampleBuffer, to: self.appAudioWriterInput)
+                    let mixed = ReplayKitAudioMixer.mix(app: sampleBuffer, mic: self.latestMicSampleBuffer) ?? sampleBuffer
+                    self.add(sample: mixed, to: self.audioWriterInput)
                 }
             case .audioMic:
                 if self.recordAudio {
-                    self.add(sample: sampleBuffer, to: self.micAudioWriterInput)
+                    self.latestMicSampleBuffer = sampleBuffer
                 }
             default:
                 break
@@ -214,8 +208,7 @@ public final class ScreenRecorder {
             }
 
             self.videoWriterInput?.markAsFinished()
-            self.micAudioWriterInput?.markAsFinished()
-            self.appAudioWriterInput?.markAsFinished()
+            self.audioWriterInput?.markAsFinished()
 
             guard let writer = self.videoWriter else {
                 handler(nil)
