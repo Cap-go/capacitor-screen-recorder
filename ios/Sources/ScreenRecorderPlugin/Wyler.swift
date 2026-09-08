@@ -51,6 +51,7 @@ public enum VideoContainerFormat {
 
 public final class ScreenRecorder {
     private var videoOutputURL: URL?
+    private var didCreateOutputFile = false
     private var videoWriter: AVAssetWriter?
     private var videoWriterInput: AVAssetWriterInput?
     private var micAudioWriterInput: AVAssetWriterInput?
@@ -106,12 +107,14 @@ public final class ScreenRecorder {
         let newVideoOutputURL: URL
 
         if let passedVideoOutput = outputURL {
+            self.didCreateOutputFile = false
             self.videoOutputURL = passedVideoOutput
             newVideoOutputURL = passedVideoOutput
         } else {
             let documentsPath = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true)[0] as NSString
             let fileName = "WylerNewVideo-\(UUID().uuidString).\(videoFormat.fileExtension)"
             newVideoOutputURL = URL(fileURLWithPath: documentsPath.appendingPathComponent(fileName))
+            self.didCreateOutputFile = true
             self.videoOutputURL = newVideoOutputURL
         }
 
@@ -225,6 +228,7 @@ public final class ScreenRecorder {
                     if self.saveToCameraRoll {
                         self.saveVideoToCameraRollAfterAuthorized(handler: handler)
                     } else {
+                        self.deleteOutputFileIfNeeded()
                         handler(nil)
                     }
                 }
@@ -234,6 +238,7 @@ public final class ScreenRecorder {
                 if self.saveToCameraRoll {
                     self.saveVideoToCameraRollAfterAuthorized(handler: handler)
                 } else {
+                    self.deleteOutputFileIfNeeded()
                     handler(nil)
                 }
             }
@@ -265,8 +270,18 @@ public final class ScreenRecorder {
             if let error = error {
                 handler(error)
             } else {
+                self.deleteOutputFileIfNeeded()
                 handler(nil)
             }
         })
+    }
+
+    private func deleteOutputFileIfNeeded() {
+        guard didCreateOutputFile, let videoOutputURL = self.videoOutputURL else { return }
+        do {
+            try FileManager.default.removeItem(at: videoOutputURL)
+        } catch {
+            debugPrint("Failed to delete recording file \(videoOutputURL): \(error)")
+        }
     }
 }
