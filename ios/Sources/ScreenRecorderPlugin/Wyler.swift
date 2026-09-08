@@ -96,6 +96,8 @@ public final class ScreenRecorder {
         videoWriterInput = nil
         micAudioWriterInput = nil
         appAudioWriterInput = nil
+        videoOutputURL = nil
+        didCreateOutputFile = false
     }
 
     private func configureAudioSession() throws {
@@ -219,6 +221,7 @@ public final class ScreenRecorder {
         recorder.stopCapture(handler: { error in
             let outputURL = self.videoOutputURL
             let didCreate = self.didCreateOutputFile
+            let saveToCameraRoll = self.saveToCameraRoll
 
             if let error = error {
                 self.videoWriterInput?.markAsFinished()
@@ -248,7 +251,7 @@ public final class ScreenRecorder {
                         handler(finishError)
                         return
                     }
-                    if self.saveToCameraRoll {
+                    if saveToCameraRoll {
                         self.saveVideoToCameraRollAfterAuthorized(outputURL: outputURL,
                                                                     didCreate: didCreate,
                                                                     handler: handler)
@@ -261,7 +264,7 @@ public final class ScreenRecorder {
                 self.deleteOutputFileIfNeeded(outputURL: outputURL, didCreate: didCreate)
                 handler(writer.error)
             } else {
-                if self.saveToCameraRoll {
+                if saveToCameraRoll {
                     self.saveVideoToCameraRollAfterAuthorized(outputURL: outputURL,
                                                                 didCreate: didCreate,
                                                                 handler: handler)
