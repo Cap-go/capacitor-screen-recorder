@@ -79,6 +79,10 @@ final class ReplayKitAudioTrackMixer {
         while let app = pendingAppQueue.first,
               let queuedMic = micQueue.first,
               Self.rangesOverlap(queuedMic, app) {
+            if let leadingMic = Self.flushLeadingMicOnly(queuedMic: &micQueue[0], app: app, reference: referenceAppBuffer) {
+                outputs.append(leadingMic)
+                continue
+            }
             if let result = ReplayKitAudioMixer.mix(
                 app: app,
                 mic: queuedMic.buffer,
@@ -149,6 +153,43 @@ final class ReplayKitAudioTrackMixer {
             otherRange: timeRange(of: app)
         )
         return intersection.duration.isValid && intersection.duration > .zero
+    }
+
+    private static func flushLeadingMicOnly(
+        queuedMic: inout QueuedMic,
+        app: CMSampleBuffer,
+        reference: CMSampleBuffer?
+    ) -> CMSampleBuffer? {
+        let micRange = timeRange(of: queuedMic.buffer, consumedFrames: queuedMic.consumedFrames)
+        let intersection = CMTimeRangeGetIntersection(micRange, otherRange: timeRange(of: app))
+        guard intersection.duration.isValid, intersection.duration > .zero else { return nil }
+        guard CMTimeCompare(micRange.start, intersection.start) < 0 else { return nil }
+
+        let sampleRate = sampleRate(of: queuedMic.buffer)
+        let bufferStart = CMSampleBufferGetPresentationTimeStamp(queuedMic.buffer)
+        let leadingEndFrame = frameOffset(
+            for: intersection.start,
+            relativeTo: bufferStart,
+            sampleRate: sampleRate
+        )
+        let leadingFrameCount = leadingEndFrame - queuedMic.consumedFrames
+        guard leadingFrameCount > 0 else { return nil }
+
+        guard let leadingSlice = ReplayKitAudioMixer.slice(
+            queuedMic.buffer,
+            fromFrame: queuedMic.consumedFrames,
+            frameCount: leadingFrameCount
+        ) else {
+            return nil
+        }
+
+        queuedMic.consumedFrames = leadingEndFrame
+        return normalizeForWriter(leadingSlice, reference: reference)
+    }
+
+    private static func frameOffset(for time: CMTime, relativeTo start: CMTime, sampleRate: Double) -> Int {
+        let delta = CMTimeSubtract(time, start)
+        return max(0, Int((CMTimeGetSeconds(delta) * sampleRate).rounded()))
     }
 
     private static func micTailForWriter(_ queuedMic: QueuedMic, reference: CMSampleBuffer?) -> CMSampleBuffer? {
@@ -276,14 +317,17 @@ enum ReplayKitAudioMixer {
         return MixResult(sample: output, micFramesConsumed: micStartFrame + frames)
     }
 
-    static func slice(_ buffer: CMSampleBuffer, fromFrame frameOffset: Int) -> CMSampleBuffer? {
+    static func slice(_ buffer: CMSampleBuffer, fromFrame frameOffset: Int, frameCount: Int? = nil) -> CMSampleBuffer? {
         guard CMSampleBufferDataIsReady(buffer) else { return nil }
 
         let totalFrames = CMSampleBufferGetNumSamples(buffer)
         guard frameOffset < totalFrames else { return nil }
-        if frameOffset <= 0 {
+        if frameOffset <= 0, frameCount == nil {
             return buffer
         }
+
+        let framesToCopy = min(frameCount ?? (totalFrames - frameOffset), totalFrames - frameOffset)
+        guard framesToCopy > 0 else { return nil }
 
         guard let format = CMSampleBufferGetFormatDescription(buffer),
               let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(format)?.pointee,
@@ -293,10 +337,9 @@ enum ReplayKitAudioMixer {
             return nil
         }
 
-        let remainingFrames = totalFrames - frameOffset
         let bytesPerFrame = Int(asbd.mBytesPerFrame)
         let byteOffset = frameOffset * bytesPerFrame
-        let remainingBytes = remainingFrames * bytesPerFrame
+        let remainingBytes = framesToCopy * bytesPerFrame
         let timescale = CMTimeScale(asbd.mSampleRate)
 
         var tailBytes = [UInt8](repeating: 0, count: remainingBytes)
@@ -334,7 +377,7 @@ enum ReplayKitAudioMixer {
             CMTime(value: CMTimeValue(frameOffset), timescale: timescale)
         )
         var timing = CMSampleTimingInfo(
-            duration: CMTime(value: CMTimeValue(remainingFrames), timescale: timescale),
+            duration: CMTime(value: CMTimeValue(framesToCopy), timescale: timescale),
             presentationTimeStamp: presentationTimeStamp,
             decodeTimeStamp: CMSampleBufferGetDecodeTimeStamp(buffer)
         )
@@ -346,7 +389,7 @@ enum ReplayKitAudioMixer {
             makeDataReadyCallback: nil,
             refcon: nil,
             formatDescription: format,
-            sampleCount: remainingFrames,
+            sampleCount: framesToCopy,
             sampleTimingEntryCount: 1,
             sampleTimingArray: &timing,
             sampleSizeEntryCount: 0,
