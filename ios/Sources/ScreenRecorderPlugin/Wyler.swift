@@ -69,6 +69,7 @@ public final class ScreenRecorder: NSObject {
     private var pendingStartHandler: ((Error?) -> Void)?
     private var videoWritingStarted = false
     private var isFinalizing = false
+    private var captureSessionID: UInt64 = 0
     private let stateLock = NSLock()
 
     private struct FinalizationSnapshot {
@@ -85,6 +86,19 @@ public final class ScreenRecorder: NSObject {
         stateLock.lock()
         defer { stateLock.unlock() }
         return try body()
+    }
+
+    private func isActiveCaptureSession(_ sessionID: UInt64) -> Bool {
+        return withStateLock {
+            sessionID == captureSessionID && isRecording && !isFinalizing
+        }
+    }
+
+    private func nextCaptureSessionID() -> UInt64 {
+        return withStateLock {
+            captureSessionID += 1
+            return captureSessionID
+        }
     }
 
     public func startRecording(to outputURL: URL? = nil,
@@ -127,6 +141,11 @@ public final class ScreenRecorder: NSObject {
             }
             startCapture(handler: handler)
         } catch let err {
+            withStateLock {
+                isRecording = false
+                pendingStartHandler = nil
+                captureSessionID += 1
+            }
             handler(err)
         }
     }
@@ -194,6 +213,7 @@ public final class ScreenRecorder: NSObject {
         guard recorder.isAvailable else {
             return handler(ScreenRecorderError.notAvailable)
         }
+        let sessionID = nextCaptureSessionID()
         withStateLock {
             isRecording = true
             // The start is settled exactly once — by the first sample, a capture
@@ -201,45 +221,50 @@ public final class ScreenRecorder: NSObject {
             // so the plugin's start promise never hangs and never settles twice.
             pendingStartHandler = handler
         }
-        recorder.startCapture(handler: { [weak self] (sampleBuffer, sampleType, passedError) in
+        recorder.stopCapture(handler: { [weak self] _ in
             guard let self = self else { return }
-            if let passedError = passedError {
-                // Fails a still-pending start; once the start is settled the
-                // delegate owns the end-of-capture reporting.
-                if !self.settlePendingStart(passedError) {
-                    self.handleRecordingEndedExternally(error: passedError)
+            guard self.isActiveCaptureSession(sessionID) else { return }
+            self.recorder.startCapture(handler: { [weak self] (sampleBuffer, sampleType, passedError) in
+                guard let self = self else { return }
+                guard self.isActiveCaptureSession(sessionID) else { return }
+                if let passedError = passedError {
+                    // Fails a still-pending start; once the start is settled the
+                    // delegate owns the end-of-capture reporting.
+                    if !self.settlePendingStart(passedError) {
+                        self.handleRecordingEndedExternally(error: passedError)
+                    }
+                    return
                 }
-                return
-            }
 
-            switch sampleType {
-            case .video:
-                if self.handleSampleBuffer(sampleBuffer: sampleBuffer) {
-                    self.settlePendingStart(nil)
-                } else {
-                    let error: Error? = self.withStateLock {
-                        guard let writer = videoWriter, writer.status == .failed else {
-                            return nil
+                switch sampleType {
+                case .video:
+                    if self.handleSampleBuffer(sampleBuffer: sampleBuffer) {
+                        self.settlePendingStart(nil)
+                    } else {
+                        let error: Error? = self.withStateLock {
+                            guard let writer = videoWriter, writer.status == .failed else {
+                                return nil
+                            }
+                            return writer.error ?? ScreenRecorderError.captureInterrupted
                         }
-                        return writer.error ?? ScreenRecorderError.captureInterrupted
-                    }
-                    if let error = error {
-                        if !self.settlePendingStart(error) {
-                            self.handleRecordingEndedExternally(error: error)
+                        if let error = error {
+                            if !self.settlePendingStart(error) {
+                                self.handleRecordingEndedExternally(error: error)
+                            }
                         }
                     }
+                case .audioApp:
+                    if self.recordAudio {
+                        self.add(sample: sampleBuffer, to: self.appAudioWriterInput)
+                    }
+                case .audioMic:
+                    if self.recordAudio {
+                        self.add(sample: sampleBuffer, to: self.micAudioWriterInput)
+                    }
+                default:
+                    break
                 }
-            case .audioApp:
-                if self.recordAudio {
-                    self.add(sample: sampleBuffer, to: self.appAudioWriterInput)
-                }
-            case .audioMic:
-                if self.recordAudio {
-                    self.add(sample: sampleBuffer, to: self.micAudioWriterInput)
-                }
-            default:
-                break
-            }
+            })
         })
     }
 
@@ -306,6 +331,7 @@ public final class ScreenRecorder: NSObject {
             guard !isFinalizing else { return nil }
             stopRequested = true
             isFinalizing = true
+            captureSessionID += 1
             return FinalizationSnapshot(
                 outputURL: videoOutputURL,
                 writer: videoWriter,
@@ -423,6 +449,7 @@ public final class ScreenRecorder: NSObject {
             guard isRecording, !stopRequested else { return nil }
             isRecording = false
             isFinalizing = true
+            captureSessionID += 1
             return FinalizationSnapshot(
                 outputURL: videoOutputURL,
                 writer: videoWriter,
