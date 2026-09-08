@@ -86,6 +86,7 @@ public final class ScreenRecorder {
             }
             startCapture(handler: handler)
         } catch let err {
+            self.deleteOutputFileIfNeeded()
             handler(err)
         }
     }
@@ -151,7 +152,11 @@ public final class ScreenRecorder {
     }
 
     private func startCapture(handler: @escaping (Error?) -> Void) {
+        let outputURL = self.videoOutputURL
+        let didCreate = self.didCreateOutputFile
+
         guard recorder.isAvailable else {
+            self.deleteOutputFileIfNeeded(outputURL: outputURL, didCreate: didCreate)
             return handler(ScreenRecorderError.notAvailable)
         }
         var sent = false
@@ -163,7 +168,7 @@ public final class ScreenRecorder {
                 if self.videoWriter?.status == .writing {
                     self.videoWriter?.cancelWriting()
                 }
-                self.deleteOutputFileIfNeeded()
+                self.deleteOutputFileIfNeeded(outputURL: outputURL, didCreate: didCreate)
                 if !sent {
                     handler(passedError)
                     sent = true
