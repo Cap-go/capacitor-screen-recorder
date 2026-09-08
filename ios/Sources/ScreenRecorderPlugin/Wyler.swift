@@ -15,6 +15,7 @@ import UIKit
 public enum ScreenRecorderError: Error {
     case notAvailable
     case photoLibraryAccessNotGranted
+    case alreadyRecording
 }
 
 public enum VideoContainerFormat {
@@ -59,6 +60,7 @@ public final class ScreenRecorder {
     private var saveToCameraRoll = false
     private var recordAudio = false
     private var videoFormat: VideoContainerFormat = .mp4
+    private var isRecording = false
     let recorder = RPScreenRecorder.shared()
 
     public func startRecording(to outputURL: URL? = nil,
@@ -67,6 +69,11 @@ public final class ScreenRecorder {
                                recordAudio: Bool = false,
                                videoFormat: VideoContainerFormat = .mp4,
                                handler: @escaping (Error?) -> Void) {
+        guard !isRecording else {
+            return handler(ScreenRecorderError.alreadyRecording)
+        }
+        isRecording = true
+
         self.saveToCameraRoll = saveToCameraRoll
         self.recordAudio = recordAudio
         self.videoFormat = videoFormat
@@ -91,6 +98,7 @@ public final class ScreenRecorder {
             }
             startCapture(handler: handler)
         } catch let err {
+            isRecording = false
             if let cleanupURL = attemptOutputURL {
                 self.deleteOutputFileIfNeeded(outputURL: cleanupURL, didCreate: attemptDidCreate)
             } else if self.didCreateOutputFile, let cleanupURL = self.videoOutputURL {
@@ -168,6 +176,7 @@ public final class ScreenRecorder {
 
         guard recorder.isAvailable else {
             self.deleteOutputFileIfNeeded(outputURL: outputURL, didCreate: didCreate)
+            self.isRecording = false
             return handler(ScreenRecorderError.notAvailable)
         }
         var sent = false
@@ -181,6 +190,7 @@ public final class ScreenRecorder {
                 }
                 self.deleteOutputFileIfNeeded(outputURL: outputURL, didCreate: didCreate)
                 if !sent {
+                    self.isRecording = false
                     handler(passedError)
                     sent = true
                 }
@@ -231,6 +241,10 @@ public final class ScreenRecorder {
             let outputURL = self.videoOutputURL
             let didCreate = self.didCreateOutputFile
             let shouldSaveToCameraRoll = self.saveToCameraRoll
+            let complete: (Error?) -> Void = { stopError in
+                self.isRecording = false
+                handler(stopError)
+            }
 
             if let error = error {
                 self.videoWriterInput?.markAsFinished()
@@ -240,7 +254,7 @@ public final class ScreenRecorder {
                     self.videoWriter?.cancelWriting()
                 }
                 self.deleteOutputFileIfNeeded(outputURL: outputURL, didCreate: didCreate)
-                handler(error)
+                complete(error)
                 return
             }
 
@@ -249,7 +263,7 @@ public final class ScreenRecorder {
             self.appAudioWriterInput?.markAsFinished()
 
             guard let writer = self.videoWriter else {
-                handler(nil)
+                complete(nil)
                 return
             }
 
@@ -257,32 +271,41 @@ public final class ScreenRecorder {
                 writer.finishWriting {
                     if let finishError = writer.error {
                         self.deleteOutputFileIfNeeded(outputURL: outputURL, didCreate: didCreate)
-                        handler(finishError)
+                        complete(finishError)
                         return
                     }
                     if shouldSaveToCameraRoll {
                         self.saveVideoToCameraRollAfterAuthorized(outputURL: outputURL,
                                                                     didCreate: didCreate,
-                                                                    handler: handler)
+                                                                    handler: complete)
                     } else {
                         self.deleteOutputFileIfNeeded(outputURL: outputURL, didCreate: didCreate)
-                        handler(nil)
+                        complete(nil)
                     }
                 }
             } else if writer.status == .failed {
                 self.deleteOutputFileIfNeeded(outputURL: outputURL, didCreate: didCreate)
-                handler(writer.error)
+                complete(writer.error)
             } else {
                 if shouldSaveToCameraRoll {
                     self.saveVideoToCameraRollAfterAuthorized(outputURL: outputURL,
                                                                 didCreate: didCreate,
-                                                                handler: handler)
+                                                                handler: complete)
                 } else {
                     self.deleteOutputFileIfNeeded(outputURL: outputURL, didCreate: didCreate)
-                    handler(nil)
+                    complete(nil)
                 }
             }
         })
+    }
+
+    private func canSaveToPhotoLibrary(_ status: PHAuthorizationStatus) -> Bool {
+        switch status {
+        case .authorized, .limited:
+            return true
+        default:
+            return false
+        }
     }
 
     private func saveVideoToCameraRollAfterAuthorized(outputURL: URL? = nil,
@@ -290,14 +313,15 @@ public final class ScreenRecorder {
                                                       handler: @escaping (Error?) -> Void) {
         let capturedOutputURL = outputURL ?? self.videoOutputURL
         let capturedDidCreate = didCreate ?? self.didCreateOutputFile
+        let status = PHPhotoLibrary.authorizationStatus(for: .addOnly)
 
-        if PHPhotoLibrary.authorizationStatus() == .authorized {
+        if canSaveToPhotoLibrary(status) {
             self.saveVideoToCameraRoll(outputURL: capturedOutputURL,
                                        didCreate: capturedDidCreate,
                                        handler: handler)
         } else {
-            PHPhotoLibrary.requestAuthorization({ (status) in
-                if status == .authorized {
+            PHPhotoLibrary.requestAuthorization(for: .addOnly, handler: { (status) in
+                if self.canSaveToPhotoLibrary(status) {
                     self.saveVideoToCameraRoll(outputURL: capturedOutputURL,
                                                didCreate: capturedDidCreate,
                                                handler: handler)
@@ -318,13 +342,17 @@ public final class ScreenRecorder {
 
         PHPhotoLibrary.shared().performChanges({
             PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: videoOutputURL)
-        }, completionHandler: { _, error in
+        }, completionHandler: { success, error in
             if let error = error {
                 self.deleteOutputFileIfNeeded(outputURL: videoOutputURL, didCreate: didCreate)
                 handler(error)
-            } else {
+            } else if success {
                 self.deleteOutputFileIfNeeded(outputURL: videoOutputURL, didCreate: didCreate)
                 handler(nil)
+            } else {
+                handler(NSError(domain: "ScreenRecorder",
+                                code: -1,
+                                userInfo: [NSLocalizedDescriptionKey: "Failed to save video to photo library"]))
             }
         })
     }
