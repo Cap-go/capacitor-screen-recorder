@@ -304,6 +304,7 @@ public final class ScreenRecorder: NSObject {
     public func stoprecording(handler: @escaping (Error?) -> Void) {
         let snapshot = withStateLock { () -> FinalizationSnapshot in
             stopRequested = true
+            isFinalizing = true
             return FinalizationSnapshot(
                 outputURL: videoOutputURL,
                 writer: videoWriter,
@@ -316,6 +317,9 @@ public final class ScreenRecorder: NSObject {
         }
         recorder.stopCapture(handler: { error in
             if let error = error {
+                withStateLock {
+                    isFinalizing = false
+                }
                 self.settlePendingStart(error)
                 handler(error)
                 return
@@ -335,9 +339,6 @@ public final class ScreenRecorder: NSObject {
         snapshot: FinalizationSnapshot,
         handler: @escaping (Error?) -> Void
     ) {
-        withStateLock {
-            isFinalizing = true
-        }
         let writer = snapshot.writer
         let videoInput = snapshot.videoInput
         let micInput = snapshot.micInput
@@ -417,6 +418,7 @@ public final class ScreenRecorder: NSObject {
         let snapshot: FinalizationSnapshot? = withStateLock {
             guard isRecording, !stopRequested else { return nil }
             isRecording = false
+            isFinalizing = true
             return FinalizationSnapshot(
                 outputURL: videoOutputURL,
                 writer: videoWriter,
