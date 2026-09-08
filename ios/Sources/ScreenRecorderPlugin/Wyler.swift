@@ -222,6 +222,7 @@ public final class ScreenRecorder {
             if writer.status == .writing {
                 writer.finishWriting {
                     if let finishError = writer.error {
+                        self.deleteOutputFileIfNeeded()
                         handler(finishError)
                         return
                     }
@@ -233,6 +234,7 @@ public final class ScreenRecorder {
                     }
                 }
             } else if writer.status == .failed {
+                self.deleteOutputFileIfNeeded()
                 handler(writer.error)
             } else {
                 if self.saveToCameraRoll {
@@ -253,6 +255,7 @@ public final class ScreenRecorder {
                 if status == .authorized {
                     self.saveVideoToCameraRoll(handler: handler)
                 } else {
+                    self.deleteOutputFileIfNeeded()
                     handler(ScreenRecorderError.photoLibraryAccessNotGranted)
                 }
             })
@@ -268,6 +271,7 @@ public final class ScreenRecorder {
             PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: videoOutputURL)
         }, completionHandler: { _, error in
             if let error = error {
+                self.deleteOutputFileIfNeeded()
                 handler(error)
             } else {
                 self.deleteOutputFileIfNeeded()
