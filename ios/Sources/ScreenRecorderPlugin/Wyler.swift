@@ -71,6 +71,8 @@ public final class ScreenRecorder: NSObject {
     private var isFinalizing = false
     private var captureSessionID: UInt64 = 0
     private var delegateSessionID: UInt64 = 0
+    private var recordingEstablishedSessionID: UInt64 = 0
+    private var pendingRestartDrain = false
     private let stateLock = NSLock()
 
     private struct FinalizationSnapshot {
@@ -97,11 +99,20 @@ public final class ScreenRecorder: NSObject {
 
     private func isActiveDelegateSession() -> Bool {
         return withStateLock {
-            delegateSessionID != 0 &&
+            !pendingRestartDrain &&
+                delegateSessionID != 0 &&
                 delegateSessionID == captureSessionID &&
                 isRecording &&
                 !isFinalizing &&
                 !stopRequested
+        }
+    }
+
+    private func markFinalizationComplete() {
+        withStateLock {
+            isFinalizing = false
+            pendingRestartDrain = true
+            recordingEstablishedSessionID = 0
         }
     }
 
@@ -125,6 +136,24 @@ public final class ScreenRecorder: NSObject {
                                recordAudio: Bool = false,
                                videoFormat: VideoContainerFormat = .mp4,
                                handler: @escaping (Error?) -> Void) {
+        if withStateLock({ pendingRestartDrain }) {
+            invalidateDelegateSession()
+            recorder.stopCapture(handler: { [weak self] _ in
+                guard let self = self else { return }
+                withStateLock {
+                    pendingRestartDrain = false
+                }
+                self.startRecording(
+                    to: outputURL,
+                    size: size,
+                    saveToCameraRoll: saveToCameraRoll,
+                    recordAudio: recordAudio,
+                    videoFormat: videoFormat,
+                    handler: handler
+                )
+            })
+            return
+        }
         // Reject before any writer/session state is touched: a second start
         // while the first is still pending must not disturb the first capture.
         let rejectError: Error? = withStateLock {
@@ -174,6 +203,7 @@ public final class ScreenRecorder: NSObject {
         micAudioWriterInput = nil
         appAudioWriterInput = nil
         videoWritingStarted = false
+        recordingEstablishedSessionID = 0
     }
 
     private func configureAudioSession() throws {
@@ -242,6 +272,9 @@ public final class ScreenRecorder: NSObject {
         recorder.stopCapture(handler: { [weak self] _ in
             guard let self = self else { return }
             self.invalidateDelegateSession()
+            withStateLock {
+                pendingRestartDrain = false
+            }
             guard self.isActiveCaptureSession(sessionID) else { return }
             withStateLock {
                 delegateSessionID = sessionID
@@ -332,6 +365,7 @@ public final class ScreenRecorder: NSObject {
                 return false
             }
             videoWritingStarted = true
+            recordingEstablishedSessionID = captureSessionID
             if videoWriterInput?.isReadyForMoreMediaData == true {
                 videoWriterInput?.append(sampleBuffer)
             }
@@ -404,9 +438,7 @@ public final class ScreenRecorder: NSObject {
         appInput?.markAsFinished()
 
         guard let writer = writer else {
-            withStateLock {
-                isFinalizing = false
-            }
+            self.markFinalizationComplete()
             handler(nil)
             return
         }
@@ -414,9 +446,7 @@ public final class ScreenRecorder: NSObject {
         if writer.status == .writing {
             writer.finishWriting {
                 if let finishError = writer.error {
-                    withStateLock {
-                        isFinalizing = false
-                    }
+                    self.markFinalizationComplete()
                     handler(finishError)
                     return
                 }
@@ -425,27 +455,21 @@ public final class ScreenRecorder: NSObject {
                     hasVideoContent: snapshot.hasVideoContent,
                     saveToCameraRoll: snapshot.saveToCameraRoll,
                     handler: { error in
-                        withStateLock {
-                            isFinalizing = false
-                        }
+                        self.markFinalizationComplete()
                         handler(error)
                     }
                 )
             }
         } else if writer.status == .failed {
-            withStateLock {
-                isFinalizing = false
-            }
+            self.markFinalizationComplete()
             handler(writer.error)
         } else {
-            deliverOutput(
+            self.deliverOutput(
                 url: snapshot.outputURL,
                 hasVideoContent: snapshot.hasVideoContent,
                 saveToCameraRoll: snapshot.saveToCameraRoll,
                 handler: { error in
-                    withStateLock {
-                        isFinalizing = false
-                    }
+                    self.markFinalizationComplete()
                     handler(error)
                 }
             )
@@ -534,9 +558,19 @@ extension ScreenRecorder: RPScreenRecorderDelegate {
         guard isActiveDelegateSession() else { return }
         // A stop before the first sample fails the still-pending start; only
         // a capture that was actually running is an external stop.
-        if !settlePendingStart(error) {
-            handleRecordingEndedExternally(error: error)
+        if settlePendingStart(error) {
+            invalidateDelegateSession()
+            return
         }
+        let shouldFinalize = withStateLock {
+            recordingEstablishedSessionID != 0 &&
+                recordingEstablishedSessionID == captureSessionID
+        }
+        guard shouldFinalize else {
+            invalidateDelegateSession()
+            return
+        }
+        handleRecordingEndedExternally(error: error)
         invalidateDelegateSession()
     }
 }
