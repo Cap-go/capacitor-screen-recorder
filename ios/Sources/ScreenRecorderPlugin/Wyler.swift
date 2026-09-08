@@ -91,10 +91,11 @@ public final class ScreenRecorder {
             }
             startCapture(handler: handler)
         } catch let err {
-            self.deleteOutputFileIfNeeded(
-                outputURL: attemptOutputURL ?? self.videoOutputURL,
-                didCreate: attemptOutputURL != nil ? attemptDidCreate : self.didCreateOutputFile
-            )
+            if let cleanupURL = attemptOutputURL {
+                self.deleteOutputFileIfNeeded(outputURL: cleanupURL, didCreate: attemptDidCreate)
+            } else if self.didCreateOutputFile, let cleanupURL = self.videoOutputURL {
+                self.deleteOutputFileIfNeeded(outputURL: cleanupURL, didCreate: true)
+            }
             handler(err)
         }
     }
@@ -229,7 +230,7 @@ public final class ScreenRecorder {
         recorder.stopCapture(handler: { error in
             let outputURL = self.videoOutputURL
             let didCreate = self.didCreateOutputFile
-            let saveToCameraRoll = self.saveToCameraRoll
+            let shouldSaveToCameraRoll = self.saveToCameraRoll
 
             if let error = error {
                 self.videoWriterInput?.markAsFinished()
@@ -259,7 +260,7 @@ public final class ScreenRecorder {
                         handler(finishError)
                         return
                     }
-                    if saveToCameraRoll {
+                    if shouldSaveToCameraRoll {
                         self.saveVideoToCameraRollAfterAuthorized(outputURL: outputURL,
                                                                     didCreate: didCreate,
                                                                     handler: handler)
@@ -272,7 +273,7 @@ public final class ScreenRecorder {
                 self.deleteOutputFileIfNeeded(outputURL: outputURL, didCreate: didCreate)
                 handler(writer.error)
             } else {
-                if saveToCameraRoll {
+                if shouldSaveToCameraRoll {
                     self.saveVideoToCameraRollAfterAuthorized(outputURL: outputURL,
                                                                 didCreate: didCreate,
                                                                 handler: handler)
