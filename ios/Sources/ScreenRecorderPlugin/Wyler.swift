@@ -69,6 +69,13 @@ public final class ScreenRecorder: NSObject {
     private var pendingStartHandler: ((Error?) -> Void)?
     private var videoWritingStarted = false
     private var isFinalizing = false
+    private let stateLock = NSLock()
+
+    private func withStateLock<T>(_ body: () throws -> T) rethrows -> T {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return try body()
+    }
 
     public func startRecording(to outputURL: URL? = nil,
                                size: CGSize? = nil,
@@ -78,14 +85,20 @@ public final class ScreenRecorder: NSObject {
                                handler: @escaping (Error?) -> Void) {
         // Reject before any writer/session state is touched: a second start
         // while the first is still pending must not disturb the first capture.
-        guard pendingStartHandler == nil, !isFinalizing else {
-            return handler(ScreenRecorderError.captureAlreadyPending)
+        let rejectError: Error? = withStateLock {
+            guard pendingStartHandler == nil, !isFinalizing else {
+                return ScreenRecorderError.captureAlreadyPending
+            }
+            stopRequested = false
+            return nil
+        }
+        if let rejectError {
+            return handler(rejectError)
         }
         self.saveToCameraRoll = saveToCameraRoll
         self.recordAudio = recordAudio
         self.videoFormat = videoFormat
         resetWriterState()
-        stopRequested = false
         recorder.delegate = self
 
         recorder.isMicrophoneEnabled = recordAudio
@@ -111,7 +124,9 @@ public final class ScreenRecorder: NSObject {
         videoWriterInput = nil
         micAudioWriterInput = nil
         appAudioWriterInput = nil
-        videoWritingStarted = false
+        withStateLock {
+            videoWritingStarted = false
+        }
     }
 
     private func configureAudioSession() throws {
@@ -169,11 +184,13 @@ public final class ScreenRecorder: NSObject {
         guard recorder.isAvailable else {
             return handler(ScreenRecorderError.notAvailable)
         }
-        isRecording = true
-        // The start is settled exactly once — by the first sample, a capture
-        // failure, the delegate, or stoprecording() — whichever comes first,
-        // so the plugin's start promise never hangs and never settles twice.
-        pendingStartHandler = handler
+        withStateLock {
+            isRecording = true
+            // The start is settled exactly once — by the first sample, a capture
+            // failure, the delegate, or stoprecording() — whichever comes first,
+            // so the plugin's start promise never hangs and never settles twice.
+            pendingStartHandler = handler
+        }
         recorder.startCapture(handler: { [weak self] (sampleBuffer, sampleType, passedError) in
             guard let self = self else { return }
             if let passedError = passedError {
@@ -215,12 +232,18 @@ public final class ScreenRecorder: NSObject {
     /// to the delegate / stoprecording().
     @discardableResult
     private func settlePendingStart(_ error: Error?) -> Bool {
-        guard let startHandler = pendingStartHandler else {
-            return false
+        let startHandler: ((Error?) -> Void)? = withStateLock {
+            guard let handler = pendingStartHandler else {
+                return nil
+            }
+            pendingStartHandler = nil
+            if error != nil {
+                isRecording = false
+            }
+            return handler
         }
-        pendingStartHandler = nil
-        if error != nil {
-            isRecording = false
+        guard let startHandler else {
+            return false
         }
         startHandler(error)
         return true
@@ -242,7 +265,9 @@ public final class ScreenRecorder: NSObject {
         guard writer.status == AVAssetWriter.Status.writing else {
             return false
         }
-        videoWritingStarted = true
+        withStateLock {
+            videoWritingStarted = true
+        }
         if videoWriterInput?.isReadyForMoreMediaData == true {
             videoWriterInput?.append(sampleBuffer)
         }
@@ -258,10 +283,13 @@ public final class ScreenRecorder: NSObject {
     }
 
     public func stoprecording(handler: @escaping (Error?) -> Void) {
-        stopRequested = true
-        let outputURL = videoOutputURL
-        let hadVideoContent = videoWritingStarted
-        let saveToCameraRoll = saveToCameraRoll
+        let snapshots: (URL?, Bool, Bool) = withStateLock {
+            stopRequested = true
+            return (videoOutputURL, videoWritingStarted, saveToCameraRoll)
+        }
+        let outputURL = snapshots.0
+        let hadVideoContent = snapshots.1
+        let saveToCameraRoll = snapshots.2
         recorder.stopCapture(handler: { error in
             if let error = error {
                 self.settlePendingStart(error)
@@ -269,7 +297,9 @@ public final class ScreenRecorder: NSObject {
                 return
             }
 
-            self.isRecording = false
+            withStateLock {
+                isRecording = false
+            }
             // stop() may arrive before the first sample: settle the pending
             // start so the caller's start promise does not hang.
             self.settlePendingStart(ScreenRecorderError.captureInterrupted)
@@ -288,7 +318,9 @@ public final class ScreenRecorder: NSObject {
         saveToCameraRoll: Bool,
         handler: @escaping (Error?) -> Void
     ) {
-        isFinalizing = true
+        withStateLock {
+            isFinalizing = true
+        }
         let writer = videoWriter
         let videoInput = videoWriterInput
         let micInput = micAudioWriterInput
@@ -299,7 +331,9 @@ public final class ScreenRecorder: NSObject {
         appInput?.markAsFinished()
 
         guard let writer = writer else {
-            isFinalizing = false
+            withStateLock {
+                isFinalizing = false
+            }
             handler(nil)
             return
         }
@@ -307,7 +341,9 @@ public final class ScreenRecorder: NSObject {
         if writer.status == .writing {
             writer.finishWriting {
                 if let finishError = writer.error {
-                    self.isFinalizing = false
+                    withStateLock {
+                        isFinalizing = false
+                    }
                     handler(finishError)
                     return
                 }
@@ -316,13 +352,17 @@ public final class ScreenRecorder: NSObject {
                     hasVideoContent: hasVideoContent,
                     saveToCameraRoll: saveToCameraRoll,
                     handler: { error in
-                        self.isFinalizing = false
+                        withStateLock {
+                            isFinalizing = false
+                        }
                         handler(error)
                     }
                 )
             }
         } else if writer.status == .failed {
-            isFinalizing = false
+            withStateLock {
+                isFinalizing = false
+            }
             handler(writer.error)
         } else {
             deliverOutput(
@@ -330,7 +370,9 @@ public final class ScreenRecorder: NSObject {
                 hasVideoContent: hasVideoContent,
                 saveToCameraRoll: saveToCameraRoll,
                 handler: { error in
-                    self.isFinalizing = false
+                    withStateLock {
+                        isFinalizing = false
+                    }
                     handler(error)
                 }
             )
@@ -355,14 +397,15 @@ public final class ScreenRecorder: NSObject {
     }
 
     private func handleRecordingEndedExternally(error: Error?) {
-        guard isRecording, !stopRequested else { return }
-        isRecording = false
-        // Capture the session's output URL: finishWriting is asynchronous and
-        // a new startRecording() would otherwise republish the next
-        // recording's URL (and save its file to the camera roll).
-        let outputURL = videoOutputURL
-        let hadVideoContent = videoWritingStarted
-        let saveToCameraRoll = saveToCameraRoll
+        let session: (URL?, Bool, Bool)? = withStateLock {
+            guard isRecording, !stopRequested else { return nil }
+            isRecording = false
+            return (videoOutputURL, videoWritingStarted, saveToCameraRoll)
+        }
+        guard let session else { return }
+        let outputURL = session.0
+        let hadVideoContent = session.1
+        let saveToCameraRoll = session.2
         finishWriterAndDeliver(
             outputURL: outputURL,
             hasVideoContent: hadVideoContent,
