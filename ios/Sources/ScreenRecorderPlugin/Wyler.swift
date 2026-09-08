@@ -323,7 +323,9 @@ public final class ScreenRecorder: NSObject {
         recorder.stopCapture(handler: { error in
             if let error = error {
                 self.settlePendingStart(error)
-                self.finishWriterAndDeliver(snapshot: snapshot, handler: handler)
+                self.finishWriterAndDeliver(snapshot: snapshot, handler: { _ in
+                    handler(error)
+                })
                 return
             }
 
