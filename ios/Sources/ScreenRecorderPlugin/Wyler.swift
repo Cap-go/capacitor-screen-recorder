@@ -74,6 +74,7 @@ public final class ScreenRecorder: NSObject {
     private var recordingEstablishedSessionID: UInt64 = 0
     private var pendingRestartDrain = false
     private var restartDrainGeneration: UInt64 = 0
+    private var restartDrainInFlight = false
     private let stateLock = NSLock()
 
     private struct FinalizationSnapshot {
@@ -139,6 +140,16 @@ public final class ScreenRecorder: NSObject {
                                videoFormat: VideoContainerFormat = .mp4,
                                handler: @escaping (Error?) -> Void) {
         if withStateLock({ pendingRestartDrain }) {
+            let alreadyWaiting = withStateLock { () -> Bool in
+                if restartDrainInFlight {
+                    return true
+                }
+                restartDrainInFlight = true
+                return false
+            }
+            if alreadyWaiting {
+                return handler(ScreenRecorderError.captureAlreadyPending)
+            }
             let drainGeneration = withStateLock { restartDrainGeneration }
             invalidateDelegateSession()
             recorder.stopCapture(handler: { [weak self] _ in
@@ -146,9 +157,16 @@ public final class ScreenRecorder: NSObject {
                 let shouldContinue = withStateLock {
                     pendingRestartDrain && restartDrainGeneration == drainGeneration
                 }
-                guard shouldContinue else { return }
+                guard shouldContinue else {
+                    withStateLock {
+                        restartDrainInFlight = false
+                    }
+                    handler(ScreenRecorderError.captureAlreadyPending)
+                    return
+                }
                 withStateLock {
                     pendingRestartDrain = false
+                    restartDrainInFlight = false
                 }
                 self.startRecording(
                     to: outputURL,
