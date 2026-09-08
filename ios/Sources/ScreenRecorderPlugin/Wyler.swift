@@ -64,6 +64,7 @@ public final class ScreenRecorder: NSObject {
     public var onExternalStop: ((URL?, Error?) -> Void)?
     private var isRecording = false
     private var stopRequested = false
+    private var pendingStartHandler: ((Error?) -> Void)?
 
     public func startRecording(to outputURL: URL? = nil,
                                size: CGSize? = nil,
@@ -159,6 +160,9 @@ public final class ScreenRecorder: NSObject {
             return handler(ScreenRecorderError.notAvailable)
         }
         isRecording = true
+        // Retained until the first sample settles the start, so the delegate
+        // can reject a start whose capture stopped before any sample arrived.
+        pendingStartHandler = handler
         var sent = false
         recorder.startCapture(handler: { (sampleBuffer, sampleType, passedError) in
             if let passedError = passedError {
@@ -166,6 +170,7 @@ public final class ScreenRecorder: NSObject {
                     // The capture never started — clear the flag so a later
                     // delegate callback cannot report this as an external stop.
                     self.isRecording = false
+                    self.pendingStartHandler = nil
                     handler(passedError)
                     sent = true
                 }
@@ -187,6 +192,7 @@ public final class ScreenRecorder: NSObject {
                 break
             }
             if !sent {
+                self.pendingStartHandler = nil
                 handler(nil)
                 sent = true
             }
@@ -308,6 +314,14 @@ extension ScreenRecorder: RPScreenRecorderDelegate {
         didStopRecordingWithError error: Error,
         previewViewController _: RPPreviewViewController?
     ) {
+        if let startHandler = pendingStartHandler {
+            // The capture stopped before the first sample: settle the still
+            // pending start instead of reporting an external stop.
+            pendingStartHandler = nil
+            isRecording = false
+            startHandler(error)
+            return
+        }
         handleRecordingEndedExternally(error: error)
     }
 }
