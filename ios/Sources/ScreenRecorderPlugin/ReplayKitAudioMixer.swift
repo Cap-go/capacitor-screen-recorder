@@ -1,8 +1,69 @@
 import AVFoundation
 import CoreMedia
 
+final class ReplayKitAudioTrackMixer {
+    private var micQueue: [CMSampleBuffer] = []
+
+    func handleMic(_ sampleBuffer: CMSampleBuffer) -> [CMSampleBuffer] {
+        micQueue.append(sampleBuffer)
+        return []
+    }
+
+    func handleApp(_ sampleBuffer: CMSampleBuffer) -> [CMSampleBuffer] {
+        var outputs: [CMSampleBuffer] = []
+        let appRange = Self.timeRange(of: sampleBuffer)
+
+        while let firstMic = micQueue.first {
+            let micRange = Self.timeRange(of: firstMic)
+            if CMTimeCompare(CMTimeRangeGetEnd(micRange), appRange.start) <= 0 {
+                outputs.append(micQueue.removeFirst())
+                continue
+            }
+            if Self.rangesOverlap(micRange, appRange) {
+                let mic = micQueue.removeFirst()
+                outputs.append(ReplayKitAudioMixer.mix(app: sampleBuffer, mic: mic) ?? sampleBuffer)
+                return outputs
+            }
+            break
+        }
+
+        outputs.append(sampleBuffer)
+        return outputs
+    }
+
+    func drain() -> [CMSampleBuffer] {
+        defer { micQueue.removeAll() }
+        return micQueue
+    }
+
+    private static func sampleRate(of buffer: CMSampleBuffer) -> Double {
+        guard let format = CMSampleBufferGetFormatDescription(buffer),
+              let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(format)?.pointee else {
+            return 48_000
+        }
+        return asbd.mSampleRate
+    }
+
+    private static func timeRange(of buffer: CMSampleBuffer) -> CMTimeRange {
+        let start = CMSampleBufferGetPresentationTimeStamp(buffer)
+        let duration = CMSampleBufferGetDuration(buffer)
+        if duration.isValid, duration > .zero {
+            return CMTimeRange(start: start, duration: duration)
+        }
+
+        let frames = CMSampleBufferGetNumSamples(buffer)
+        let timescale = CMTimeScale(sampleRate(of: buffer))
+        return CMTimeRange(start: start, duration: CMTime(value: CMTimeValue(frames), timescale: timescale))
+    }
+
+    private static func rangesOverlap(_ lhs: CMTimeRange, _ rhs: CMTimeRange) -> Bool {
+        let intersection = CMTimeRangeGetIntersection(lhs, otherRange: rhs)
+        return intersection.duration.isValid && intersection.duration > .zero
+    }
+}
+
 enum ReplayKitAudioMixer {
-    /// Mixes ReplayKit app audio with the latest microphone sample into one PCM buffer.
+    /// Mixes ReplayKit app audio with a microphone sample into one PCM buffer.
     /// Returns the app buffer unchanged when mic data is unavailable or formats are incompatible.
     static func mix(app: CMSampleBuffer, mic: CMSampleBuffer?) -> CMSampleBuffer? {
         guard let mic = mic else { return app }
@@ -33,7 +94,12 @@ enum ReplayKitAudioMixer {
         }
 
         var mixedBuffer: CMSampleBuffer?
-        guard CMSampleBufferCreateCopy(allocator: kCFAllocatorDefault, sampleBuffer: app, sampleBufferOut: &mixedBuffer),
+        let copyStatus = CMSampleBufferCreateCopy(
+            allocator: kCFAllocatorDefault,
+            sampleBuffer: app,
+            sampleBufferOut: &mixedBuffer
+        )
+        guard copyStatus == noErr,
               let output = mixedBuffer,
               let outputBlock = CMSampleBufferGetDataBuffer(output) else {
             return app

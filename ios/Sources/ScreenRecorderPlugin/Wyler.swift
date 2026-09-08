@@ -54,7 +54,7 @@ public final class ScreenRecorder {
     private var videoWriter: AVAssetWriter?
     private var videoWriterInput: AVAssetWriterInput?
     private var audioWriterInput: AVAssetWriterInput?
-    private var latestMicSampleBuffer: CMSampleBuffer?
+    private var audioTrackMixer: ReplayKitAudioTrackMixer?
     private var saveToCameraRoll = false
     private var recordAudio = false
     private var videoFormat: VideoContainerFormat = .mp4
@@ -81,6 +81,7 @@ public final class ScreenRecorder {
             addVideoWriterInput(size: size)
             if recordAudio {
                 self.audioWriterInput = createAndAddAudioInput()
+                self.audioTrackMixer = ReplayKitAudioTrackMixer()
             }
             startCapture(handler: handler)
         } catch let err {
@@ -92,7 +93,7 @@ public final class ScreenRecorder {
         videoWriter = nil
         videoWriterInput = nil
         audioWriterInput = nil
-        latestMicSampleBuffer = nil
+        audioTrackMixer = nil
     }
 
     private func configureAudioSession() throws {
@@ -164,13 +165,16 @@ public final class ScreenRecorder {
             case .video:
                 self.handleSampleBuffer(sampleBuffer: sampleBuffer)
             case .audioApp:
-                if self.recordAudio {
-                    let mixed = ReplayKitAudioMixer.mix(app: sampleBuffer, mic: self.latestMicSampleBuffer) ?? sampleBuffer
-                    self.add(sample: mixed, to: self.audioWriterInput)
+                if self.recordAudio, let mixer = self.audioTrackMixer {
+                    for sample in mixer.handleApp(sampleBuffer) {
+                        self.add(sample: sample, to: self.audioWriterInput)
+                    }
                 }
             case .audioMic:
-                if self.recordAudio {
-                    self.latestMicSampleBuffer = sampleBuffer
+                if self.recordAudio, let mixer = self.audioTrackMixer {
+                    for sample in mixer.handleMic(sampleBuffer) {
+                        self.add(sample: sample, to: self.audioWriterInput)
+                    }
                 }
             default:
                 break
@@ -205,6 +209,12 @@ public final class ScreenRecorder {
             if let error = error {
                 handler(error)
                 return
+            }
+
+            if let mixer = self.audioTrackMixer {
+                for sample in mixer.drain() {
+                    self.add(sample: sample, to: self.audioWriterInput)
+                }
             }
 
             self.videoWriterInput?.markAsFinished()
