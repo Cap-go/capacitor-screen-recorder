@@ -155,12 +155,12 @@ public final class ScreenRecorder: NSObject {
             recorder.stopCapture(handler: { [weak self] _ in
                 guard let self = self else { return }
                 let shouldContinue = withStateLock { () -> Bool in
-                    guard pendingRestartDrain && restartDrainGeneration == drainGeneration else {
-                        restartDrainInFlight = false
+                    guard self.pendingRestartDrain && self.restartDrainGeneration == drainGeneration else {
+                        self.restartDrainInFlight = false
                         return false
                     }
-                    pendingRestartDrain = false
-                    restartDrainInFlight = false
+                    self.pendingRestartDrain = false
+                    self.restartDrainInFlight = false
                     return true
                 }
                 guard shouldContinue else {
@@ -298,10 +298,10 @@ public final class ScreenRecorder: NSObject {
             self.invalidateDelegateSession()
             guard self.isActiveCaptureSession(sessionID) else { return }
             withStateLock {
-                pendingRestartDrain = false
+                self.pendingRestartDrain = false
             }
             withStateLock {
-                delegateSessionID = sessionID
+                self.delegateSessionID = sessionID
             }
             self.recorder.delegate = self
             self.recorder.startCapture(handler: { [weak self] (sampleBuffer, sampleType, passedError) in
@@ -322,7 +322,7 @@ public final class ScreenRecorder: NSObject {
                         self.settlePendingStart(nil)
                     } else {
                         let error: Error? = self.withStateLock {
-                            guard let writer = videoWriter, writer.status == .failed else {
+                            guard let writer = self.videoWriter, writer.status == .failed else {
                                 return nil
                             }
                             return writer.error ?? ScreenRecorderError.captureInterrupted
@@ -438,8 +438,8 @@ public final class ScreenRecorder: NSObject {
                 return
             }
 
-            withStateLock {
-                isRecording = false
+            self.withStateLock {
+                self.isRecording = false
             }
             // stop() may arrive before the first sample: settle the pending
             // start so the caller's start promise does not hang.
