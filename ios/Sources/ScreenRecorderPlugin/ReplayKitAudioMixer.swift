@@ -11,6 +11,7 @@ final class ReplayKitAudioTrackMixer {
     private var pendingAppQueue: [CMSampleBuffer] = []
     private var referenceAppBuffer: CMSampleBuffer?
     private let maxMicQueueSize = 128
+    private let maxPendingAppQueueSize = 128
 
     deinit {}
 
@@ -32,7 +33,12 @@ final class ReplayKitAudioTrackMixer {
             referenceAppBuffer = sampleBuffer
         }
         pendingAppQueue.append(sampleBuffer)
-        return emitReadySamples()
+        var outputs: [CMSampleBuffer] = []
+        while pendingAppQueue.count > maxPendingAppQueueSize {
+            outputs.append(pendingAppQueue.removeFirst())
+        }
+        outputs.append(contentsOf: emitReadySamples())
+        return outputs
     }
 
     func drain() -> [CMSampleBuffer] {
@@ -98,7 +104,12 @@ final class ReplayKitAudioTrackMixer {
                     micQueue[0].consumedFrames = result.micFramesConsumed
                 }
             } else {
-                break
+                pendingAppQueue.removeFirst()
+                outputs.append(app)
+                Self.advanceMicPastOverlap(queuedMic: &micQueue[0], app: app)
+                if micQueue[0].consumedFrames >= CMSampleBufferGetNumSamples(micQueue[0].buffer) {
+                    micQueue.removeFirst()
+                }
             }
         }
 
@@ -194,6 +205,23 @@ final class ReplayKitAudioTrackMixer {
         return max(0, Int((CMTimeGetSeconds(delta) * sampleRate).rounded()))
     }
 
+    private static func advanceMicPastOverlap(queuedMic: inout QueuedMic, app: CMSampleBuffer) {
+        let intersection = CMTimeRangeGetIntersection(
+            timeRange(of: queuedMic.buffer, consumedFrames: queuedMic.consumedFrames),
+            otherRange: timeRange(of: app)
+        )
+        guard intersection.duration.isValid, intersection.duration > .zero else { return }
+
+        let sampleRate = sampleRate(of: queuedMic.buffer)
+        let bufferStart = CMSampleBufferGetPresentationTimeStamp(queuedMic.buffer)
+        let endFrame = frameOffset(
+            for: CMTimeRangeGetEnd(intersection),
+            relativeTo: bufferStart,
+            sampleRate: sampleRate
+        )
+        queuedMic.consumedFrames = max(queuedMic.consumedFrames, endFrame)
+    }
+
     private static func micTailForWriter(_ queuedMic: QueuedMic, reference: CMSampleBuffer?) -> CMSampleBuffer? {
         guard let tail = ReplayKitAudioMixer.slice(queuedMic.buffer, fromFrame: queuedMic.consumedFrames) else {
             return nil
@@ -258,14 +286,7 @@ enum ReplayKitAudioMixer {
             return nil
         }
 
-        var mixedBuffer: CMSampleBuffer?
-        let copyStatus = CMSampleBufferCreateCopy(
-            allocator: kCFAllocatorDefault,
-            sampleBuffer: app,
-            sampleBufferOut: &mixedBuffer
-        )
-        guard copyStatus == noErr,
-              let output = mixedBuffer,
+        guard let output = copyPCMBuffer(app),
               let outputBlock = CMSampleBufferGetDataBuffer(output) else {
             return nil
         }
@@ -391,7 +412,7 @@ enum ReplayKitAudioMixer {
             CMTime(value: CMTimeValue(frameOffset), timescale: timescale)
         )
         var timing = CMSampleTimingInfo(
-            duration: CMTime(value: CMTimeValue(framesToCopy), timescale: timescale),
+            duration: CMTime(value: 1, timescale: timescale),
             presentationTimeStamp: presentationTimeStamp,
             decodeTimeStamp: CMSampleBufferGetDecodeTimeStamp(buffer)
         )
@@ -483,8 +504,9 @@ enum ReplayKitAudioMixer {
         }
         guard replaceStatus == noErr else { return nil }
 
+        let referenceTimescale = CMTimeScale(referenceAsbd.mSampleRate)
         var timing = CMSampleTimingInfo(
-            duration: CMSampleBufferGetDuration(buffer),
+            duration: CMTime(value: 1, timescale: referenceTimescale),
             presentationTimeStamp: CMSampleBufferGetPresentationTimeStamp(buffer),
             decodeTimeStamp: CMSampleBufferGetDecodeTimeStamp(buffer)
         )
@@ -496,6 +518,80 @@ enum ReplayKitAudioMixer {
             makeDataReadyCallback: nil,
             refcon: nil,
             formatDescription: referenceFormat,
+            sampleCount: frames,
+            sampleTimingEntryCount: 1,
+            sampleTimingArray: &timing,
+            sampleSizeEntryCount: 0,
+            sampleSizeArray: nil,
+            sampleBufferOut: &outputBuffer
+        )
+        guard createStatus == noErr else { return nil }
+        return outputBuffer
+    }
+
+    private static func copyPCMBuffer(_ buffer: CMSampleBuffer) -> CMSampleBuffer? {
+        guard CMSampleBufferDataIsReady(buffer) else { return nil }
+        guard let format = CMSampleBufferGetFormatDescription(buffer),
+              let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(format)?.pointee,
+              asbd.mFormatID == kAudioFormatLinearPCM,
+              (asbd.mFormatFlags & kAudioFormatFlagIsNonInterleaved) == 0,
+              let sourceBlock = CMSampleBufferGetDataBuffer(buffer) else {
+            return nil
+        }
+
+        let frames = CMSampleBufferGetNumSamples(buffer)
+        let totalBytes = frames * Int(asbd.mBytesPerFrame)
+        guard totalBytes > 0 else { return nil }
+
+        var bytes = [UInt8](repeating: 0, count: totalBytes)
+        let copyStatus = bytes.withUnsafeMutableBytes { destination in
+            CMBlockBufferCopyDataBytes(
+                sourceBlock,
+                atOffset: 0,
+                dataLength: totalBytes,
+                destination: destination.baseAddress!
+            )
+        }
+        guard copyStatus == noErr else { return nil }
+
+        var blockBuffer: CMBlockBuffer?
+        let blockStatus = CMBlockBufferCreateWithMemoryBlock(
+            allocator: kCFAllocatorDefault,
+            memoryBlock: nil,
+            blockLength: totalBytes,
+            blockAllocator: kCFAllocatorDefault,
+            customBlockSource: nil,
+            offsetToData: 0,
+            dataLength: totalBytes,
+            flags: 0,
+            blockBufferOut: &blockBuffer
+        )
+        guard blockStatus == noErr, let outputBlock = blockBuffer else { return nil }
+
+        let replaceStatus = bytes.withUnsafeMutableBytes { source in
+            CMBlockBufferReplaceDataBytes(
+                with: source.baseAddress!,
+                blockBuffer: outputBlock,
+                offsetIntoDestination: 0,
+                dataLength: totalBytes
+            )
+        }
+        guard replaceStatus == noErr else { return nil }
+
+        let timescale = CMTimeScale(asbd.mSampleRate)
+        var timing = CMSampleTimingInfo(
+            duration: CMTime(value: 1, timescale: timescale),
+            presentationTimeStamp: CMSampleBufferGetPresentationTimeStamp(buffer),
+            decodeTimeStamp: CMSampleBufferGetDecodeTimeStamp(buffer)
+        )
+        var outputBuffer: CMSampleBuffer?
+        let createStatus = CMSampleBufferCreate(
+            allocator: kCFAllocatorDefault,
+            dataBuffer: outputBlock,
+            dataReady: true,
+            makeDataReadyCallback: nil,
+            refcon: nil,
+            formatDescription: format,
             sampleCount: frames,
             sampleTimingEntryCount: 1,
             sampleTimingArray: &timing,

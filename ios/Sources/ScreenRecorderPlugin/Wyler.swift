@@ -55,6 +55,7 @@ public final class ScreenRecorder {
     private var videoWriterInput: AVAssetWriterInput?
     private var audioWriterInput: AVAssetWriterInput?
     private var audioTrackMixer: ReplayKitAudioTrackMixer?
+    private let audioMixerQueue = DispatchQueue(label: "CapgoScreenRecorder.audioMixer")
     private var saveToCameraRoll = false
     private var recordAudio = false
     private var videoFormat: VideoContainerFormat = .mp4
@@ -166,14 +167,18 @@ public final class ScreenRecorder {
                 self.handleSampleBuffer(sampleBuffer: sampleBuffer)
             case .audioApp:
                 if self.recordAudio, let mixer = self.audioTrackMixer {
-                    for sample in mixer.handleApp(sampleBuffer) {
-                        self.add(sample: sample, to: self.audioWriterInput)
+                    self.audioMixerQueue.sync {
+                        for sample in mixer.handleApp(sampleBuffer) {
+                            self.add(sample: sample, to: self.audioWriterInput)
+                        }
                     }
                 }
             case .audioMic:
                 if self.recordAudio, let mixer = self.audioTrackMixer {
-                    for sample in mixer.handleMic(sampleBuffer) {
-                        self.add(sample: sample, to: self.audioWriterInput)
+                    self.audioMixerQueue.sync {
+                        for sample in mixer.handleMic(sampleBuffer) {
+                            self.add(sample: sample, to: self.audioWriterInput)
+                        }
                     }
                 }
             default:
@@ -211,9 +216,11 @@ public final class ScreenRecorder {
                 return
             }
 
-            if let mixer = self.audioTrackMixer {
-                for sample in mixer.drain() {
-                    self.add(sample: sample, to: self.audioWriterInput)
+            self.audioMixerQueue.sync {
+                if let mixer = self.audioTrackMixer {
+                    for sample in mixer.drain() {
+                        self.add(sample: sample, to: self.audioWriterInput)
+                    }
                 }
             }
 
