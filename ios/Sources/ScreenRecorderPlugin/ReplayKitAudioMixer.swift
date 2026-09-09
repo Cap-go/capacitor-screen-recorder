@@ -12,6 +12,8 @@ final class ReplayKitAudioTrackMixer {
     private var referenceAppBuffer: CMSampleBuffer?
     private let maxMicQueueSize = 128
 
+    deinit {}
+
     func handleMic(_ sampleBuffer: CMSampleBuffer) -> [CMSampleBuffer] {
         micQueue.append(QueuedMic(buffer: sampleBuffer, consumedFrames: 0))
         var outputs: [CMSampleBuffer] = []
@@ -299,9 +301,11 @@ enum ReplayKitAudioMixer {
         guard appCopyStatus == noErr, micCopyStatus == noErr else { return nil }
 
         for frame in 0..<frames {
-            let micSample = micChannels == 1
-                ? Int32(micSamples[frame])
-                : Int32(micSamples[frame * micChannels])
+            var micAccumulator: Int32 = 0
+            for micChannel in 0..<micChannels {
+                micAccumulator += Int32(micSamples[frame * micChannels + micChannel])
+            }
+            let micSample = micAccumulator / Int32(micChannels)
             for channel in 0..<appChannels {
                 let index = frame * appChannels + channel
                 let mixed = max(Int32(Int16.min), min(Int32(Int16.max), Int32(appSamples[index]) + micSample))
@@ -310,7 +314,12 @@ enum ReplayKitAudioMixer {
         }
 
         let replaceStatus = appSamples.withUnsafeMutableBytes { source in
-            CMBlockBufferReplaceDataBytes(source.baseAddress, outputBlock, appByteOffset, outputBytes)
+            CMBlockBufferReplaceDataBytes(
+                with: source.baseAddress!,
+                blockBuffer: outputBlock,
+                offsetIntoDestination: appByteOffset,
+                dataLength: outputBytes
+            )
         }
         guard replaceStatus == noErr else { return nil }
 
@@ -368,7 +377,12 @@ enum ReplayKitAudioMixer {
         guard blockStatus == noErr, let outputBlock = blockBuffer else { return nil }
 
         let replaceStatus = tailBytes.withUnsafeMutableBytes { source in
-            CMBlockBufferReplaceDataBytes(source.baseAddress, outputBlock, 0, remainingBytes)
+            CMBlockBufferReplaceDataBytes(
+                with: source.baseAddress!,
+                blockBuffer: outputBlock,
+                offsetIntoDestination: 0,
+                dataLength: remainingBytes
+            )
         }
         guard replaceStatus == noErr else { return nil }
 
@@ -460,7 +474,12 @@ enum ReplayKitAudioMixer {
         guard blockStatus == noErr, let outputBlock = blockBuffer else { return nil }
 
         let replaceStatus = stereoSamples.withUnsafeMutableBytes { source in
-            CMBlockBufferReplaceDataBytes(source.baseAddress, outputBlock, 0, outputBytes)
+            CMBlockBufferReplaceDataBytes(
+                with: source.baseAddress!,
+                blockBuffer: outputBlock,
+                offsetIntoDestination: 0,
+                dataLength: outputBytes
+            )
         }
         guard replaceStatus == noErr else { return nil }
 
