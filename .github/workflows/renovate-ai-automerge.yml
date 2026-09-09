@@ -132,7 +132,7 @@ jobs:
           SCOPE_OK=true
           for file in "${CHANGED_FILES[@]}"; do
             [[ -z "${file}" ]] && continue
-            if [[ "${file}" == .github/workflows/* || "${file}" == renovate.json ]]; then
+            if [[ "${file}" == .github/workflows/* ]]; then
               continue
             fi
             SCOPE_OK=false
