@@ -112,6 +112,8 @@ class CapgoRecorderService : Service() {
         }
 
     private var mediaRecorder: MediaRecorder? = null
+    private var recordingStarted = false
+    private var prepareInProgress = false
 
 
     private fun createMediaRecorder(): MediaRecorder {
@@ -238,6 +240,7 @@ class CapgoRecorderService : Service() {
 
     private fun recordInternal(code: Int, data: Intent) {
         GlobalScope.launch(Dispatchers.Main) {
+            prepareInProgress = true
             startForeground(
                 notificationProvider.getNotificationId(),
                 notificationProvider.get(state)
@@ -259,16 +262,20 @@ class CapgoRecorderService : Service() {
 
             mediaProjection?.registerCallback(mediaProjectionCallback, Handler())
             if (!createRecorder()) {
+                prepareInProgress = false
                 stopRecording(IOException("MediaRecorder prepare failed"))
                 return@launch
             }
             virtualDisplay // touch
             try {
                 mediaRecorder?.start()
+                recordingStarted = true
                 state = RecordingState.Recording
                 notificationProvider.update(state)
             } catch (e: Exception) {
                 stopRecording(e)
+            } finally {
+                prepareInProgress = false
             }
         }
     }
@@ -291,12 +298,38 @@ class CapgoRecorderService : Service() {
             mediaRecorder?.stop()
         }
         releaseRecorder()
+        recordingStarted = false
+        prepareInProgress = false
     }
 
     private inner class MediaProjectionCallback : MediaProjection.Callback() {
         override fun onStop() {
             Log.d("scrcast", "projection on stop")
+            // The projection was stopped outside of stopRecording() — the user
+            // tapped the system "Stop sharing" control — so finalize the
+            // recording and publish Idle here, or the plugin would never learn
+            // that the session ended.
+            val hadStarted = recordingStarted
+            val preparing = prepareInProgress
             cleanupProjection()
+            when {
+                state is RecordingState.Idle && (state as RecordingState.Idle).error != null -> {
+                    // stopRecording() already published Idle with an error.
+                }
+                state is RecordingState.Idle && hadStarted -> {
+                    // stopRecording() already published Idle for an active recording.
+                }
+                !hadStarted || preparing -> {
+                    state = RecordingState.Idle(
+                        IllegalStateException("Recording stopped before it started"),
+                    )
+                    stopForeground(true)
+                }
+                else -> {
+                    state = RecordingState.Idle()
+                    stopForeground(true)
+                }
+            }
         }
     }
 
