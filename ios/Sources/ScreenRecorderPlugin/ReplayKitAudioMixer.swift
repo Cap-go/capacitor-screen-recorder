@@ -15,7 +15,9 @@ final class ReplayKitAudioTrackMixer {
     private let maxPendingAppQueueSize = 128
 
     // Satisfies SwiftLint required_deinit without custom teardown logic.
-    deinit {}
+    deinit {
+        // No teardown required; this deinit exists only for SwiftLint compliance.
+    }
 
     func handleMic(_ sampleBuffer: CMSampleBuffer) -> [CMSampleBuffer] {
         micQueue.append(QueuedMic(buffer: sampleBuffer, consumedFrames: 0))
@@ -106,15 +108,19 @@ final class ReplayKitAudioTrackMixer {
                     micQueue[0].consumedFrames = result.micFramesConsumed
                 }
             } else {
+                pendingAppQueue.removeFirst()
+                var fallbackSamples: [(CMTime, CMSampleBuffer)] = [
+                    (Self.startTime(of: app), app)
+                ]
                 if let micOverlap = Self.micOverlapSlice(
                     queuedMic: micQueue[0],
                     app: app,
                     reference: referenceAppBuffer
                 ) {
-                    outputs.append(micOverlap)
+                    fallbackSamples.append((Self.startTime(of: micOverlap), micOverlap))
                 }
-                pendingAppQueue.removeFirst()
-                outputs.append(app)
+                fallbackSamples.sort { CMTimeCompare($0.0, $1.0) < 0 }
+                outputs.append(contentsOf: fallbackSamples.map(\.1))
                 Self.advanceMicPastOverlap(queuedMic: &micQueue[0], app: app)
                 if micQueue[0].consumedFrames >= CMSampleBufferGetNumSamples(micQueue[0].buffer) {
                     micQueue.removeFirst()
@@ -482,7 +488,13 @@ enum ReplayKitAudioMixer {
         }
 
         var conversionError: NSError?
+        var suppliedInput = false
         let inputBlock: AVAudioConverterInputBlock = { _, outStatus in
+            if suppliedInput {
+                outStatus.pointee = .noDataNow
+                return nil
+            }
+            suppliedInput = true
             outStatus.pointee = .haveData
             return inputPCM
         }
