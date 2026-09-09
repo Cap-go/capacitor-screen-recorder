@@ -491,7 +491,7 @@ enum ReplayKitAudioMixer {
         var suppliedInput = false
         let inputBlock: AVAudioConverterInputBlock = { _, outStatus in
             if suppliedInput {
-                outStatus.pointee = .noDataNow
+                outStatus.pointee = .endOfStream
                 return nil
             }
             suppliedInput = true
