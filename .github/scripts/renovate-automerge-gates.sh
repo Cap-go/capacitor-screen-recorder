@@ -10,7 +10,7 @@ REQUIRED_CHECKS=("Build code and test" "build_android" "build_ios" "guard_swiftp
 IGNORE_CHECK_SUBSTR=("Socket" "SonarCloud" "smith" "cubic" "Renovate AI automerge")
 CODERABBIT_LOGIN="coderabbitai[bot]"
 POLL_SECONDS=30
-MAX_WAIT_SECONDS=1800
+MAX_WAIT_SECONDS=600
 
 log() { echo "::notice::$*"; }
 skip() { log "$1"; exit 2; }
@@ -89,14 +89,21 @@ check_matches_required() {
   return 1
 }
 
-fetch_check_runs() {
-  gh api "repos/${REPO}/commits/${HEAD_SHA}/check-runs" --paginate \
-    --jq '.check_runs[] | [.id, .name, .status, (.conclusion // "")] | @tsv'
+load_check_runs() {
+  local output_file="$1"
+  if ! gh api "repos/${REPO}/commits/${HEAD_SHA}/check-runs" --paginate \
+    --jq '.check_runs[] | [.id, .name, .status, (.conclusion // "")] | @tsv' >"${output_file}"; then
+    fail "Failed to fetch check runs for ${HEAD_SHA}"
+  fi
 }
 
 evaluate_required_checks() {
   local pending=false
   local failed=false
+  local check_runs_file
+  check_runs_file="$(mktemp)"
+  trap 'rm -f "${check_runs_file}"' RETURN
+  load_check_runs "${check_runs_file}"
 
   for required in "${REQUIRED_CHECKS[@]}"; do
     local found=false
@@ -118,7 +125,7 @@ evaluate_required_checks() {
         latest_status="${status}"
         latest_conclusion="${conclusion}"
       fi
-    done < <(fetch_check_runs)
+    done <"${check_runs_file}"
 
     if [[ "${found}" != "true" ]]; then
       pending=true
