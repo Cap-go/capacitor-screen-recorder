@@ -34,12 +34,14 @@ jobs:
       - name: Re-validate gates and merge
         env:
           GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+          HEAD_SHA: ${{ inputs.head_sha }}
         run: |
           set -euo pipefail
           set +e
           bash .github/scripts/renovate-automerge-gates.sh merge \
-            "${{ inputs.pr_number }}" \
-            "${{ inputs.head_sha }}" \
+            "${PR_NUMBER}" \
+            "${HEAD_SHA}" \
             "${GITHUB_REPOSITORY}"
           gate_result=$?
           set -e
