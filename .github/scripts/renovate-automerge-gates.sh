@@ -10,7 +10,7 @@ REQUIRED_CHECKS=("Build code and test" "build_android" "build_ios" "guard_swiftp
 IGNORE_CHECK_SUBSTR=("Socket" "SonarCloud" "smith" "cubic" "Renovate AI automerge")
 CODERABBIT_LOGIN="coderabbitai[bot]"
 POLL_SECONDS=30
-MAX_WAIT_SECONDS=600
+MAX_WAIT_SECONDS=540
 
 log() { echo "::notice::$*"; }
 skip() { log "$1"; exit 2; }
