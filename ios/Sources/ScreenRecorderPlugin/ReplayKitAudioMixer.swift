@@ -1,5 +1,6 @@
 import AVFoundation
 import CoreMedia
+import os
 
 private struct QueuedMic {
     let buffer: CMSampleBuffer
@@ -13,6 +14,7 @@ final class ReplayKitAudioTrackMixer {
     private let maxMicQueueSize = 128
     private let maxPendingAppQueueSize = 128
 
+    // Satisfies SwiftLint required_deinit without custom teardown logic.
     deinit {}
 
     func handleMic(_ sampleBuffer: CMSampleBuffer) -> [CMSampleBuffer] {
@@ -35,7 +37,7 @@ final class ReplayKitAudioTrackMixer {
         pendingAppQueue.append(sampleBuffer)
         var outputs: [CMSampleBuffer] = []
         while pendingAppQueue.count > maxPendingAppQueueSize {
-            outputs.append(pendingAppQueue.removeFirst())
+            _ = pendingAppQueue.removeFirst()
         }
         outputs.append(contentsOf: emitReadySamples())
         return outputs
@@ -104,6 +106,13 @@ final class ReplayKitAudioTrackMixer {
                     micQueue[0].consumedFrames = result.micFramesConsumed
                 }
             } else {
+                if let micOverlap = Self.micOverlapSlice(
+                    queuedMic: micQueue[0],
+                    app: app,
+                    reference: referenceAppBuffer
+                ) {
+                    outputs.append(micOverlap)
+                }
                 pendingAppQueue.removeFirst()
                 outputs.append(app)
                 Self.advanceMicPastOverlap(queuedMic: &micQueue[0], app: app)
@@ -222,6 +231,41 @@ final class ReplayKitAudioTrackMixer {
         queuedMic.consumedFrames = max(queuedMic.consumedFrames, endFrame)
     }
 
+    private static func micOverlapSlice(
+        queuedMic: QueuedMic,
+        app: CMSampleBuffer,
+        reference: CMSampleBuffer?
+    ) -> CMSampleBuffer? {
+        let intersection = CMTimeRangeGetIntersection(
+            timeRange(of: queuedMic.buffer, consumedFrames: queuedMic.consumedFrames),
+            otherRange: timeRange(of: app)
+        )
+        guard intersection.duration.isValid, intersection.duration > .zero else { return nil }
+
+        let sampleRate = sampleRate(of: queuedMic.buffer)
+        let bufferStart = CMSampleBufferGetPresentationTimeStamp(queuedMic.buffer)
+        let startFrame = max(
+            queuedMic.consumedFrames,
+            frameOffset(for: intersection.start, relativeTo: bufferStart, sampleRate: sampleRate)
+        )
+        let endFrame = frameOffset(
+            for: CMTimeRangeGetEnd(intersection),
+            relativeTo: bufferStart,
+            sampleRate: sampleRate
+        )
+        let frameCount = endFrame - startFrame
+        guard frameCount > 0 else { return nil }
+
+        guard let overlap = ReplayKitAudioMixer.slice(
+            queuedMic.buffer,
+            fromFrame: startFrame,
+            frameCount: frameCount
+        ) else {
+            return nil
+        }
+        return normalizeForWriter(overlap, reference: reference)
+    }
+
     private static func micTailForWriter(_ queuedMic: QueuedMic, reference: CMSampleBuffer?) -> CMSampleBuffer? {
         guard let tail = ReplayKitAudioMixer.slice(queuedMic.buffer, fromFrame: queuedMic.consumedFrames) else {
             return nil
@@ -236,6 +280,8 @@ final class ReplayKitAudioTrackMixer {
 }
 
 enum ReplayKitAudioMixer {
+    private static let logger = Logger(subsystem: "CapgoScreenRecorder", category: "ReplayKitAudioMixer")
+
     struct MixResult {
         let sample: CMSampleBuffer
         let micFramesConsumed: Int
@@ -255,19 +301,36 @@ enum ReplayKitAudioMixer {
               (appAsbd.mFormatFlags & kAudioFormatFlagIsNonInterleaved) == 0,
               (micAsbd.mFormatFlags & kAudioFormatFlagIsNonInterleaved) == 0,
               appAsbd.mBitsPerChannel == 16,
-              micAsbd.mBitsPerChannel == 16,
-              appAsbd.mSampleRate == micAsbd.mSampleRate else {
+              micAsbd.mBitsPerChannel == 16 else {
+            return nil
+        }
+
+        var micBuffer = mic
+        var effectiveMicOffset = micFrameOffset
+        if micAsbd.mSampleRate != appAsbd.mSampleRate {
+            guard let resampled = resampleMicBuffer(mic, toAppSampleRate: appAsbd.mSampleRate) else {
+                logger.error("Failed to resample microphone audio from \(micAsbd.mSampleRate) Hz to \(appAsbd.mSampleRate) Hz")
+                return nil
+            }
+            micBuffer = resampled
+            effectiveMicOffset = Int(
+                (Double(micFrameOffset) * appAsbd.mSampleRate / micAsbd.mSampleRate).rounded()
+            )
+        }
+
+        guard let micFormat = CMSampleBufferGetFormatDescription(micBuffer),
+              let resampledMicAsbd = CMAudioFormatDescriptionGetStreamBasicDescription(micFormat)?.pointee else {
             return nil
         }
 
         let appRange = timeRange(of: app)
-        let micRange = timeRange(of: mic)
+        let micRange = timeRange(of: micBuffer)
         let intersection = CMTimeRangeGetIntersection(appRange, otherRange: micRange)
         guard intersection.duration.isValid, intersection.duration > .zero else { return nil }
 
         let sampleRate = appAsbd.mSampleRate
         let micStartFrame = max(
-            micFrameOffset,
+            effectiveMicOffset,
             frameOffset(for: intersection.start, relativeTo: micRange.start, sampleRate: sampleRate)
         )
         let appStartFrame = frameOffset(for: intersection.start, relativeTo: appRange.start, sampleRate: sampleRate)
@@ -275,14 +338,14 @@ enum ReplayKitAudioMixer {
         guard mixFrames > 0 else { return nil }
 
         let appFrames = CMSampleBufferGetNumSamples(app)
-        let micFrames = CMSampleBufferGetNumSamples(mic)
+        let micFrames = CMSampleBufferGetNumSamples(micBuffer)
         let appAvailable = appFrames - appStartFrame
         let micAvailable = micFrames - micStartFrame
         let frames = min(mixFrames, appAvailable, micAvailable)
         guard frames > 0 else { return nil }
 
         guard let appBlock = CMSampleBufferGetDataBuffer(app),
-              let micBlock = CMSampleBufferGetDataBuffer(mic) else {
+              let micBlock = CMSampleBufferGetDataBuffer(micBuffer) else {
             return nil
         }
 
@@ -292,9 +355,9 @@ enum ReplayKitAudioMixer {
         }
 
         let appChannels = Int(appAsbd.mChannelsPerFrame)
-        let micChannels = Int(micAsbd.mChannelsPerFrame)
+        let micChannels = Int(resampledMicAsbd.mChannelsPerFrame)
         let appBytesPerFrame = Int(appAsbd.mBytesPerFrame)
-        let micBytesPerFrame = Int(micAsbd.mBytesPerFrame)
+        let micBytesPerFrame = Int(resampledMicAsbd.mBytesPerFrame)
         let outputBytes = frames * appBytesPerFrame
         let appByteOffset = appStartFrame * appBytesPerFrame
         let micByteOffset = micStartFrame * micBytesPerFrame
@@ -342,9 +405,165 @@ enum ReplayKitAudioMixer {
                 dataLength: outputBytes
             )
         }
+        guard replaceStatus == noErr else {
+            logger.error("Failed to write mixed PCM into output block buffer")
+            return nil
+        }
+
+        let intersectionEnd = CMTimeRangeGetEnd(intersection)
+        let originalMicStart = CMSampleBufferGetPresentationTimeStamp(mic)
+        let consumedInOriginalMic = max(
+            micFrameOffset,
+            frameOffset(for: intersectionEnd, relativeTo: originalMicStart, sampleRate: micAsbd.mSampleRate)
+        )
+        return MixResult(sample: output, micFramesConsumed: consumedInOriginalMic)
+    }
+
+    private static func resampleMicBuffer(_ mic: CMSampleBuffer, toAppSampleRate targetRate: Double) -> CMSampleBuffer? {
+        guard CMSampleBufferDataIsReady(mic),
+              let formatDesc = CMSampleBufferGetFormatDescription(mic),
+              let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc)?.pointee,
+              asbd.mFormatID == kAudioFormatLinearPCM,
+              (asbd.mFormatFlags & kAudioFormatFlagIsNonInterleaved) == 0,
+              asbd.mBitsPerChannel == 16,
+              asbd.mSampleRate != targetRate,
+              let block = CMSampleBufferGetDataBuffer(mic) else {
+            return nil
+        }
+
+        let channels = AVAudioChannelCount(asbd.mChannelsPerFrame)
+        guard let inputFormat = AVAudioFormat(
+            commonFormat: .pcmFormatInt16,
+            sampleRate: asbd.mSampleRate,
+            channels: channels,
+            interleaved: true
+        ), let outputFormat = AVAudioFormat(
+            commonFormat: .pcmFormatInt16,
+            sampleRate: targetRate,
+            channels: channels,
+            interleaved: true
+        ), let converter = AVAudioConverter(from: inputFormat, to: outputFormat) else {
+            return nil
+        }
+
+        let inputFrames = CMSampleBufferGetNumSamples(mic)
+        let inputBytes = inputFrames * Int(asbd.mBytesPerFrame)
+        var rawBytes = [UInt8](repeating: 0, count: inputBytes)
+        let copyStatus = rawBytes.withUnsafeMutableBytes { destination in
+            CMBlockBufferCopyDataBytes(
+                block,
+                atOffset: 0,
+                dataLength: inputBytes,
+                destination: destination.baseAddress!
+            )
+        }
+        guard copyStatus == noErr else { return nil }
+
+        guard let inputPCM = AVAudioPCMBuffer(pcmFormat: inputFormat, frameCapacity: AVAudioFrameCount(inputFrames)),
+              let inputChannelData = inputPCM.int16ChannelData else {
+            return nil
+        }
+        inputPCM.frameLength = AVAudioFrameCount(inputFrames)
+        rawBytes.withUnsafeBytes { source in
+            let samples = source.bindMemory(to: Int16.self)
+            for index in 0..<inputFrames {
+                for channel in 0..<Int(channels) {
+                    inputChannelData[0][index * Int(channels) + channel] = samples[index * Int(channels) + channel]
+                }
+            }
+        }
+
+        let outputFrameCapacity = AVAudioFrameCount(
+            (Double(inputFrames) * targetRate / asbd.mSampleRate).rounded(.up)
+        )
+        guard let outputPCM = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: outputFrameCapacity),
+              let outputChannelData = outputPCM.int16ChannelData else {
+            return nil
+        }
+
+        var conversionError: NSError?
+        let inputBlock: AVAudioConverterInputBlock = { _, outStatus in
+            outStatus.pointee = .haveData
+            return inputPCM
+        }
+        converter.convert(to: outputPCM, error: &conversionError, withInputFrom: inputBlock)
+        guard conversionError == nil, outputPCM.frameLength > 0 else { return nil }
+
+        let outputFrames = Int(outputPCM.frameLength)
+        let outputBytesPerFrame = Int(outputFormat.streamDescription.pointee.mBytesPerFrame)
+        let outputBytes = outputFrames * outputBytesPerFrame
+        var outputBytesArray = [UInt8](repeating: 0, count: outputBytes)
+        outputBytesArray.withUnsafeMutableBytes { destination in
+            let samples = destination.bindMemory(to: Int16.self)
+            for index in 0..<outputFrames {
+                for channel in 0..<Int(channels) {
+                    samples[index * Int(channels) + channel] = outputChannelData[0][index * Int(channels) + channel]
+                }
+            }
+        }
+
+        var outputBlockBuffer: CMBlockBuffer?
+        let blockStatus = CMBlockBufferCreateWithMemoryBlock(
+            allocator: kCFAllocatorDefault,
+            memoryBlock: nil,
+            blockLength: outputBytes,
+            blockAllocator: kCFAllocatorDefault,
+            customBlockSource: nil,
+            offsetToData: 0,
+            dataLength: outputBytes,
+            flags: 0,
+            blockBufferOut: &outputBlockBuffer
+        )
+        guard blockStatus == noErr, let outputBlock = outputBlockBuffer else { return nil }
+
+        let replaceStatus = outputBytesArray.withUnsafeMutableBytes { source in
+            CMBlockBufferReplaceDataBytes(
+                with: source.baseAddress!,
+                blockBuffer: outputBlock,
+                offsetIntoDestination: 0,
+                dataLength: outputBytes
+            )
+        }
         guard replaceStatus == noErr else { return nil }
 
-        return MixResult(sample: output, micFramesConsumed: micStartFrame + frames)
+        var outputAsbd = asbd
+        outputAsbd.mSampleRate = targetRate
+        var outputFormatDescription: CMAudioFormatDescription?
+        let formatStatus = CMAudioFormatDescriptionCreate(
+            allocator: kCFAllocatorDefault,
+            asbd: &outputAsbd,
+            layoutSize: 0,
+            layout: nil,
+            magicCookieSize: 0,
+            magicCookie: nil,
+            extensions: nil,
+            formatDescriptionOut: &outputFormatDescription
+        )
+        guard formatStatus == noErr, let resampledFormat = outputFormatDescription else { return nil }
+
+        let timescale = CMTimeScale(targetRate)
+        var timing = CMSampleTimingInfo(
+            duration: CMTime(value: 1, timescale: timescale),
+            presentationTimeStamp: CMSampleBufferGetPresentationTimeStamp(mic),
+            decodeTimeStamp: CMSampleBufferGetDecodeTimeStamp(mic)
+        )
+        var outputBuffer: CMSampleBuffer?
+        let createStatus = CMSampleBufferCreate(
+            allocator: kCFAllocatorDefault,
+            dataBuffer: outputBlock,
+            dataReady: true,
+            makeDataReadyCallback: nil,
+            refcon: nil,
+            formatDescription: resampledFormat,
+            sampleCount: outputFrames,
+            sampleTimingEntryCount: 1,
+            sampleTimingArray: &timing,
+            sampleSizeEntryCount: 0,
+            sampleSizeArray: nil,
+            sampleBufferOut: &outputBuffer
+        )
+        guard createStatus == noErr else { return nil }
+        return outputBuffer
     }
 
     static func slice(_ buffer: CMSampleBuffer, fromFrame frameOffset: Int, frameCount: Int? = nil) -> CMSampleBuffer? {
