@@ -1,0 +1,110 @@
+import fs from "node:fs";
+import path from "node:path";
+
+export const DEFAULT_SKIP_DIRS = new Set([
+  "node_modules",
+  "dist",
+  "build",
+  ".build",
+  ".gradle",
+  "Pods",
+  "DerivedData",
+  ".swiftpm",
+  ".git",
+]);
+
+export const CAP9_SKIP_DIRS = new Set([...DEFAULT_SKIP_DIRS, "example-app"]);
+
+export function resolveInsideRoot(rootDir, targetPath) {
+  const root = path.resolve(rootDir);
+  const target = path.resolve(targetPath);
+  const rel = path.relative(root, target);
+  if (rel.startsWith("..") || path.isAbsolute(rel)) {
+    return null;
+  }
+  return target;
+}
+
+export function resolvePluginDir(rawDir, logTag) {
+  const resolved = path.resolve(rawDir);
+  const rel = path.relative(process.cwd(), resolved);
+  if (rel.startsWith("..") || path.isAbsolute(rel)) {
+    console.error(`[${logTag}] ERROR: plugin dir must stay inside ${process.cwd()}`);
+    process.exit(2);
+  }
+  return resolved;
+}
+
+export function readText(pluginDir, p) {
+  const safe = resolveInsideRoot(pluginDir, p);
+  if (!safe) {
+    return "";
+  }
+  try {
+    return fs.readFileSync(safe, "utf8");
+  } catch {
+    return "";
+  }
+}
+
+export function exists(pluginDir, p) {
+  const safe = resolveInsideRoot(pluginDir, p);
+  if (!safe) {
+    return false;
+  }
+  try {
+    fs.accessSync(safe);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function walkFiles(pluginDir, rootDir, exts, skipDirs = DEFAULT_SKIP_DIRS) {
+  const safeRoot = resolveInsideRoot(pluginDir, rootDir);
+  if (!safeRoot) {
+    return [];
+  }
+
+  const out = [];
+  const stack = [safeRoot];
+  while (stack.length) {
+    const dir = stack.pop();
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const e of entries) {
+      if (e.isDirectory()) {
+        if (skipDirs.has(e.name)) continue;
+        const next = resolveInsideRoot(pluginDir, path.join(dir, e.name));
+        if (next) stack.push(next);
+        continue;
+      }
+      if (!e.isFile()) continue;
+      for (const ext of exts) {
+        if (e.name.endsWith(ext)) {
+          const filePath = resolveInsideRoot(pluginDir, path.join(dir, e.name));
+          if (filePath) out.push(filePath);
+          break;
+        }
+      }
+    }
+  }
+  out.sort();
+  return out;
+}
+
+export function parsePluginDirArgs(argv, logTag) {
+  const out = { dir: resolvePluginDir(process.cwd(), logTag) };
+  for (let i = 2; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === "--dir" || a === "--pluginDir") {
+      out.dir = resolvePluginDir(argv[++i] || ".", logTag);
+      continue;
+    }
+  }
+  return out;
+}

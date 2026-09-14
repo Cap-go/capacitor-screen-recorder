@@ -10,21 +10,14 @@
  *   node scripts/check-cap9-deprecated.mjs --dir path
  */
 
-import fs from "node:fs";
 import path from "node:path";
-
-const SKIP_DIRS = new Set([
-  "node_modules",
-  "dist",
-  "build",
-  ".build",
-  ".gradle",
-  "Pods",
-  "DerivedData",
-  ".swiftpm",
-  ".git",
-  "example-app",
-]);
+import {
+  CAP9_SKIP_DIRS,
+  exists,
+  parsePluginDirArgs,
+  readText,
+  walkFiles,
+} from "./plugin-scan-fs.mjs";
 
 /** @type {{ id: string, pattern: RegExp, exts: string[], ignoreLine?: RegExp }[]} */
 const RULES = [
@@ -94,95 +87,6 @@ const RULES = [
 const CORDova_SPM_LINE =
   /\.product\s*\(\s*name\s*:\s*"Cordova"\s*,\s*package\s*:\s*"capacitor-swift-pm"\s*\)/;
 
-function resolveInsideRoot(rootDir, targetPath) {
-  const root = path.resolve(rootDir);
-  const target = path.resolve(targetPath);
-  const rel = path.relative(root, target);
-  if (rel.startsWith("..") || path.isAbsolute(rel)) {
-    return null;
-  }
-  return target;
-}
-
-function readText(rootDir, p) {
-  const safe = resolveInsideRoot(rootDir, p);
-  if (!safe) {
-    return "";
-  }
-  try {
-    return fs.readFileSync(safe, "utf8");
-  } catch {
-    return "";
-  }
-}
-
-function exists(rootDir, p) {
-  const safe = resolveInsideRoot(rootDir, p);
-  if (!safe) {
-    return false;
-  }
-  try {
-    fs.accessSync(safe);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function resolvePluginDir(rawDir) {
-  const resolved = path.resolve(rawDir);
-  const rel = path.relative(process.cwd(), resolved);
-  if (rel.startsWith("..") || path.isAbsolute(rel)) {
-    console.error(
-      `[cap9-deprecated] ERROR: plugin dir must stay inside ${process.cwd()}`,
-    );
-    process.exit(2);
-  }
-  return resolved;
-}
-
-function parseArgs(argv) {
-  const out = { dir: resolvePluginDir(process.cwd()) };
-  for (let i = 2; i < argv.length; i++) {
-    const a = argv[i];
-    if (a === "--dir" || a === "--pluginDir") {
-      out.dir = resolvePluginDir(argv[++i] || ".");
-      continue;
-    }
-  }
-  return out;
-}
-
-function walkFiles(rootDir, exts) {
-  const out = [];
-  const stack = [rootDir];
-  while (stack.length) {
-    const dir = stack.pop();
-    let entries;
-    try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
-    } catch {
-      continue;
-    }
-    for (const e of entries) {
-      if (e.isDirectory()) {
-        if (SKIP_DIRS.has(e.name)) continue;
-        stack.push(path.join(dir, e.name));
-        continue;
-      }
-      if (!e.isFile()) continue;
-      for (const ext of exts) {
-        if (e.name.endsWith(ext)) {
-          out.push(path.join(dir, e.name));
-          break;
-        }
-      }
-    }
-  }
-  out.sort();
-  return out;
-}
-
 function collectScanRoots(pluginDir, pkg) {
   const cap = typeof pkg.capacitor === "object" && pkg.capacitor ? pkg.capacitor : {};
   const roots = [];
@@ -223,7 +127,7 @@ function scanFile(pluginDir, filePath, rule) {
   return hits;
 }
 
-const args = parseArgs(process.argv);
+const args = parsePluginDirArgs(process.argv, "cap9-deprecated");
 const pluginDir = args.dir;
 const pkgPath = path.join(pluginDir, "package.json");
 
@@ -245,7 +149,7 @@ if (!cap.android && !cap.ios) {
   process.exit(0);
 }
 
-const scanRoots = collectScanRoots(pluginDir, cap);
+const scanRoots = collectScanRoots(pluginDir, pkg);
 const allExts = [...new Set(RULES.flatMap((r) => r.exts))];
 const files = [];
 for (const root of scanRoots) {
@@ -253,7 +157,7 @@ for (const root of scanRoots) {
     files.push(root);
     continue;
   }
-  files.push(...walkFiles(root, allExts));
+  files.push(...walkFiles(pluginDir, root, allExts, CAP9_SKIP_DIRS));
 }
 
 const violations = [];
