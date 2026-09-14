@@ -108,3 +108,33 @@ export function parsePluginDirArgs(argv, logTag) {
   }
   return out;
 }
+
+export function loadPluginPackage(pluginDir, logTag) {
+  const pkgPath = path.join(pluginDir, "package.json");
+  if (!exists(pluginDir, pkgPath)) {
+    console.error(`[${logTag}] ERROR: missing package.json in ${pluginDir}`);
+    process.exit(2);
+  }
+  try {
+    return JSON.parse(readText(pluginDir, pkgPath));
+  } catch (e) {
+    console.error(`[${logTag}] ERROR: invalid package.json (${pkgPath}): ${e?.message || e}`);
+    process.exit(2);
+  }
+}
+
+export function getCapacitorConfig(pkg) {
+  return typeof pkg.capacitor === "object" && pkg.capacitor ? pkg.capacitor : {};
+}
+
+export function reportFailures(logTag, pluginDir, messages) {
+  if (!messages.length) {
+    return;
+  }
+  const relDir = path.relative(process.cwd(), pluginDir) || ".";
+  console.error(`[${logTag}] FAIL in ${relDir}`);
+  for (const message of messages) {
+    console.error(`- ${message}`);
+  }
+  process.exit(1);
+}

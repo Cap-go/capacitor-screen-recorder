@@ -14,8 +14,11 @@ import path from "node:path";
 import {
   CAP9_SKIP_DIRS,
   exists,
+  getCapacitorConfig,
+  loadPluginPackage,
   parsePluginDirArgs,
   readText,
+  reportFailures,
   walkFiles,
 } from "./plugin-scan-fs.mjs";
 
@@ -129,22 +132,8 @@ function scanFile(pluginDir, filePath, rule) {
 
 const args = parsePluginDirArgs(process.argv, "cap9-deprecated");
 const pluginDir = args.dir;
-const pkgPath = path.join(pluginDir, "package.json");
-
-if (!exists(pluginDir, pkgPath)) {
-  console.error(`[cap9-deprecated] ERROR: missing package.json in ${pluginDir}`);
-  process.exit(2);
-}
-
-let pkg;
-try {
-  pkg = JSON.parse(readText(pluginDir, pkgPath));
-} catch (e) {
-  console.error(`[cap9-deprecated] ERROR: invalid package.json (${pkgPath}): ${e?.message || e}`);
-  process.exit(2);
-}
-
-const cap = typeof pkg.capacitor === "object" && pkg.capacitor ? pkg.capacitor : {};
+const pkg = loadPluginPackage(pluginDir, "cap9-deprecated");
+const cap = getCapacitorConfig(pkg);
 if (!cap.android && !cap.ios) {
   process.exit(0);
 }
@@ -175,13 +164,10 @@ for (const file of files) {
   }
 }
 
-if (violations.length) {
-  const relDir = path.relative(process.cwd(), pluginDir) || ".";
-  console.error(`[cap9-deprecated] FAIL in ${relDir}`);
-  for (const v of violations) {
-    console.error(`- ${v.rule}: ${v.file}:${v.line}: ${v.text}`);
-  }
-  process.exit(1);
-}
+reportFailures(
+  "cap9-deprecated",
+  pluginDir,
+  violations.map((v) => `${v.rule}: ${v.file}:${v.line}: ${v.text}`),
+);
 
 process.exit(0);

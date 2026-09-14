@@ -17,7 +17,15 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { exists, parsePluginDirArgs, readText, walkFiles } from "./plugin-scan-fs.mjs";
+import {
+  exists,
+  getCapacitorConfig,
+  loadPluginPackage,
+  parsePluginDirArgs,
+  readText,
+  reportFailures,
+  walkFiles,
+} from "./plugin-scan-fs.mjs";
 
 function uniq(arr) {
   const out = [];
@@ -30,22 +38,8 @@ function uniq(arr) {
 
 const args = parsePluginDirArgs(process.argv, "wiring");
 const pluginDir = args.dir;
-const pkgPath = path.join(pluginDir, "package.json");
-
-if (!exists(pluginDir, pkgPath)) {
-  console.error(`[wiring] ERROR: missing package.json in ${pluginDir}`);
-  process.exit(2);
-}
-
-let pkg;
-try {
-  pkg = JSON.parse(readText(pluginDir, pkgPath));
-} catch (e) {
-  console.error(`[wiring] ERROR: invalid package.json (${pkgPath}): ${e?.message || e}`);
-  process.exit(2);
-}
-
-const cap = typeof pkg.capacitor === "object" && pkg.capacitor ? pkg.capacitor : {};
+const pkg = loadPluginPackage(pluginDir, "wiring");
+const cap = getCapacitorConfig(pkg);
 const supportsAndroid = typeof cap.android === "object" && cap.android;
 const supportsIos = typeof cap.ios === "object" && cap.ios;
 
@@ -176,11 +170,6 @@ if (supportsIos) {
   }
 }
 
-if (errors.length) {
-  const relDir = path.relative(process.cwd(), pluginDir) || ".";
-  console.error(`[wiring] FAIL in ${relDir}`);
-  for (const e of errors) console.error(`- ${e}`);
-  process.exit(1);
-}
+reportFailures("wiring", pluginDir, errors);
 
 process.exit(0);
