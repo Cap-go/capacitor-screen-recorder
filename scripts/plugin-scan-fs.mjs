@@ -60,6 +60,40 @@ export function exists(pluginDir, p) {
   }
 }
 
+function pushChildDir(pluginDir, dir, name, skipDirs, stack) {
+  if (skipDirs.has(name)) {
+    return;
+  }
+  const next = resolveInsideRoot(pluginDir, path.join(dir, name));
+  if (next) {
+    stack.push(next);
+  }
+}
+
+function pushIfMatchingFile(pluginDir, dir, name, exts, out) {
+  for (const ext of exts) {
+    if (!name.endsWith(ext)) {
+      continue;
+    }
+    const filePath = resolveInsideRoot(pluginDir, path.join(dir, name));
+    if (filePath) {
+      out.push(filePath);
+    }
+    return;
+  }
+}
+
+function visitDirEntry(pluginDir, dir, entry, exts, skipDirs, stack, out) {
+  if (entry.isDirectory()) {
+    pushChildDir(pluginDir, dir, entry.name, skipDirs, stack);
+    return;
+  }
+  if (!entry.isFile()) {
+    return;
+  }
+  pushIfMatchingFile(pluginDir, dir, entry.name, exts, out);
+}
+
 export function walkFiles(pluginDir, rootDir, exts, skipDirs = DEFAULT_SKIP_DIRS) {
   const safeRoot = resolveInsideRoot(pluginDir, rootDir);
   if (!safeRoot) {
@@ -76,24 +110,11 @@ export function walkFiles(pluginDir, rootDir, exts, skipDirs = DEFAULT_SKIP_DIRS
     } catch {
       continue;
     }
-    for (const e of entries) {
-      if (e.isDirectory()) {
-        if (skipDirs.has(e.name)) continue;
-        const next = resolveInsideRoot(pluginDir, path.join(dir, e.name));
-        if (next) stack.push(next);
-        continue;
-      }
-      if (!e.isFile()) continue;
-      for (const ext of exts) {
-        if (e.name.endsWith(ext)) {
-          const filePath = resolveInsideRoot(pluginDir, path.join(dir, e.name));
-          if (filePath) out.push(filePath);
-          break;
-        }
-      }
+    for (const entry of entries) {
+      visitDirEntry(pluginDir, dir, entry, exts, skipDirs, stack, out);
     }
   }
-  out.sort();
+  out.sort((a, b) => a.localeCompare(b));
   return out;
 }
 
@@ -103,7 +124,6 @@ export function parsePluginDirArgs(argv, logTag) {
     const a = argv[i];
     if (a === "--dir" || a === "--pluginDir") {
       out.dir = resolvePluginDir(argv[++i] || ".", logTag);
-      continue;
     }
   }
   return out;
