@@ -45,7 +45,7 @@ npx cap sync
 
 ## IOS
 
-add NSPhotoLibraryUsageDescription in your info.plist
+add NSPhotoLibraryAddUsageDescription in your info.plist
 
 ## Android
 increase project's minSdk version to 23, it's required by the dependency HBRecorder

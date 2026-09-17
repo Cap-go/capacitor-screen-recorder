@@ -1,6 +1,6 @@
 {
   "name": "@capgo/capacitor-screen-recorder",
-  "version": "8.3.8",
+  "version": "8.3.11",
   "description": "Record device's screen",
   "main": "dist/plugin.cjs.js",
   "module": "dist/esm/index.js",
@@ -54,6 +54,7 @@
     "watch": "tsc --watch",
     "prepublishOnly": "bun run build",
     "check:wiring": "node scripts/check-capacitor-plugin-wiring.mjs",
+    "check:cap9-deprecated": "node scripts/check-cap9-deprecated.mjs",
     "example:install": "cd example-app && bun install --frozen-lockfile",
     "example:build": "bun run build && cd example-app && bun install --frozen-lockfile && bun run build",
     "changelog:ai": "node scripts/generate-ai-changelog.mjs"
