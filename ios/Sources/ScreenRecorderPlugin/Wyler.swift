@@ -55,8 +55,9 @@ public final class ScreenRecorder {
     private var didCreateOutputFile = false
     private var videoWriter: AVAssetWriter?
     private var videoWriterInput: AVAssetWriterInput?
-    private var micAudioWriterInput: AVAssetWriterInput?
-    private var appAudioWriterInput: AVAssetWriterInput?
+    private var audioWriterInput: AVAssetWriterInput?
+    private var audioTrackMixer: ReplayKitAudioTrackMixer?
+    private let audioMixerQueue = DispatchQueue(label: "CapgoScreenRecorder.audioMixer")
     private var saveToCameraRoll = false
     private var recordAudio = false
     private var videoFormat: VideoContainerFormat = .mp4
@@ -93,8 +94,8 @@ public final class ScreenRecorder {
             attemptDidCreate = self.didCreateOutputFile
             addVideoWriterInput(size: size)
             if recordAudio {
-                self.micAudioWriterInput = createAndAddAudioInput()
-                self.appAudioWriterInput = createAndAddAudioInput()
+                self.audioWriterInput = createAndAddAudioInput()
+                self.audioTrackMixer = ReplayKitAudioTrackMixer()
             }
             startCapture(handler: handler)
         } catch let err {
@@ -111,8 +112,8 @@ public final class ScreenRecorder {
     private func resetWriterState() {
         videoWriter = nil
         videoWriterInput = nil
-        micAudioWriterInput = nil
-        appAudioWriterInput = nil
+        audioWriterInput = nil
+        audioTrackMixer = nil
         videoOutputURL = nil
         didCreateOutputFile = false
     }
@@ -183,8 +184,7 @@ public final class ScreenRecorder {
         recorder.startCapture(handler: { (sampleBuffer, sampleType, passedError) in
             if let passedError = passedError {
                 self.videoWriterInput?.markAsFinished()
-                self.micAudioWriterInput?.markAsFinished()
-                self.appAudioWriterInput?.markAsFinished()
+                self.audioWriterInput?.markAsFinished()
                 if self.videoWriter?.status == .writing {
                     self.videoWriter?.cancelWriting()
                 }
@@ -201,12 +201,20 @@ public final class ScreenRecorder {
             case .video:
                 self.handleSampleBuffer(sampleBuffer: sampleBuffer)
             case .audioApp:
-                if self.recordAudio {
-                    self.add(sample: sampleBuffer, to: self.appAudioWriterInput)
+                if self.recordAudio, let mixer = self.audioTrackMixer {
+                    self.audioMixerQueue.sync {
+                        for sample in mixer.handleApp(sampleBuffer) {
+                            self.add(sample: sample, to: self.audioWriterInput)
+                        }
+                    }
                 }
             case .audioMic:
-                if self.recordAudio {
-                    self.add(sample: sampleBuffer, to: self.micAudioWriterInput)
+                if self.recordAudio, let mixer = self.audioTrackMixer {
+                    self.audioMixerQueue.sync {
+                        for sample in mixer.handleMic(sampleBuffer) {
+                            self.add(sample: sample, to: self.audioWriterInput)
+                        }
+                    }
                 }
             default:
                 break
@@ -248,8 +256,7 @@ public final class ScreenRecorder {
 
             if let error = error {
                 self.videoWriterInput?.markAsFinished()
-                self.micAudioWriterInput?.markAsFinished()
-                self.appAudioWriterInput?.markAsFinished()
+                self.audioWriterInput?.markAsFinished()
                 if self.videoWriter?.status == .writing {
                     self.videoWriter?.cancelWriting()
                 }
@@ -258,9 +265,16 @@ public final class ScreenRecorder {
                 return
             }
 
+            self.audioMixerQueue.sync {
+                if let mixer = self.audioTrackMixer {
+                    for sample in mixer.drain() {
+                        self.add(sample: sample, to: self.audioWriterInput)
+                    }
+                }
+            }
+
             self.videoWriterInput?.markAsFinished()
-            self.micAudioWriterInput?.markAsFinished()
-            self.appAudioWriterInput?.markAsFinished()
+            self.audioWriterInput?.markAsFinished()
 
             guard let writer = self.videoWriter else {
                 complete(nil)
