@@ -88,6 +88,20 @@
         "gradle"
       ],
       "enabled": false
+    },
+    {
+      "description": "GitHub Actions major bumps: Renovate opens PRs; renovate-ai-automerge merges after CodeRabbit APPROVED + CI green",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "automerge": false,
+      "labels": [
+        "github-actions",
+        "dependencies"
+      ]
     }
   ]
 }
