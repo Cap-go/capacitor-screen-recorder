@@ -50,7 +50,7 @@ public enum VideoContainerFormat {
     }
 }
 
-public final class ScreenRecorder {
+public final class ScreenRecorder: NSObject, RPScreenRecorderDelegate {
     private var videoOutputURL: URL?
     private var didCreateOutputFile = false
     private var videoWriter: AVAssetWriter?
@@ -62,6 +62,14 @@ public final class ScreenRecorder {
     private var recordAudio = false
     private var videoFormat: VideoContainerFormat = .mp4
     private var isRecording = false
+    private var stopRequested = false
+    private var startSettled = false
+    private var videoHasContent = false
+    private var isFinalizingExternally = false
+    private var pendingStartHandler: ((Error?) -> Void)?
+    private let stateLock = NSLock()
+    /// Fired when recording ends without `stoprecording()` being called.
+    public var onExternalStop: ((URL?, Error?) -> Void)?
     let recorder = RPScreenRecorder.shared()
 
     public func startRecording(to outputURL: URL? = nil,
@@ -70,10 +78,16 @@ public final class ScreenRecorder {
                                recordAudio: Bool = false,
                                videoFormat: VideoContainerFormat = .mp4,
                                handler: @escaping (Error?) -> Void) {
-        guard !isRecording else {
+        guard !isRecording, !isFinalizingExternally else {
             return handler(ScreenRecorderError.alreadyRecording)
         }
         isRecording = true
+        pendingStartHandler = nil
+        stopRequested = false
+        startSettled = false
+        videoHasContent = false
+        isFinalizingExternally = false
+        recorder.delegate = self
 
         self.saveToCameraRoll = saveToCameraRoll
         self.recordAudio = recordAudio
@@ -180,19 +194,15 @@ public final class ScreenRecorder {
             self.isRecording = false
             return handler(ScreenRecorderError.notAvailable)
         }
+        pendingStartHandler = handler
         var sent = false
         recorder.startCapture(handler: { (sampleBuffer, sampleType, passedError) in
             if let passedError = passedError {
-                self.videoWriterInput?.markAsFinished()
-                self.audioWriterInput?.markAsFinished()
-                if self.videoWriter?.status == .writing {
-                    self.videoWriter?.cancelWriting()
-                }
-                self.deleteOutputFileIfNeeded(outputURL: outputURL, didCreate: didCreate)
                 if !sent {
-                    self.isRecording = false
-                    handler(passedError)
+                    self.failPendingStart(passedError, outputURL: outputURL, didCreate: didCreate)
                     sent = true
+                } else if self.isRecording && !self.stopRequested && !self.isFinalizingExternally {
+                    self.handleRecordingEndedExternally(error: passedError)
                 }
                 return
             }
@@ -220,10 +230,33 @@ public final class ScreenRecorder {
                 break
             }
             if !sent {
-                handler(nil)
+                self.completePendingStart(nil)
                 sent = true
             }
         })
+    }
+
+    private func completePendingStart(_ error: Error?) {
+        stateLock.lock()
+        let startHandler = pendingStartHandler
+        pendingStartHandler = nil
+        startSettled = true
+        if error != nil {
+            isRecording = false
+        }
+        stateLock.unlock()
+        startHandler?(error)
+    }
+
+    private func failPendingStart(_ error: Error, outputURL: URL?, didCreate: Bool) {
+        recorder.delegate = nil
+        videoWriterInput?.markAsFinished()
+        audioWriterInput?.markAsFinished()
+        if videoWriter?.status == .writing {
+            videoWriter?.cancelWriting()
+        }
+        deleteOutputFileIfNeeded(outputURL: outputURL, didCreate: didCreate)
+        completePendingStart(error)
     }
 
     private func handleSampleBuffer(sampleBuffer: CMSampleBuffer) {
@@ -233,6 +266,7 @@ public final class ScreenRecorder {
         } else if self.videoWriter?.status == AVAssetWriter.Status.writing &&
                     self.videoWriterInput?.isReadyForMoreMediaData == true {
             self.videoWriterInput?.append(sampleBuffer)
+            self.videoHasContent = true
         }
     }
 
@@ -245,6 +279,12 @@ public final class ScreenRecorder {
     }
 
     public func stoprecording(handler: @escaping (Error?) -> Void) {
+        if isFinalizingExternally || !isRecording {
+            handler(nil)
+            return
+        }
+        stopRequested = true
+        recorder.delegate = nil
         recorder.stopCapture(handler: { error in
             let outputURL = self.videoOutputURL
             let didCreate = self.didCreateOutputFile
@@ -380,5 +420,113 @@ public final class ScreenRecorder {
         } catch {
             debugPrint("Failed to delete recording file \(fileURL): \(error)")
         }
+    }
+
+    private func handleRecordingEndedExternally(error: Error?) {
+        stateLock.lock()
+        let shouldHandle = isRecording && !stopRequested && !isFinalizingExternally
+        if shouldHandle {
+            isFinalizingExternally = true
+        }
+        stateLock.unlock()
+        guard shouldHandle else { return }
+        recorder.delegate = nil
+
+        let outputURL = videoOutputURL
+        let didCreate = didCreateOutputFile
+        let hadVideo = videoHasContent
+
+        recorder.stopCapture(handler: { _ in
+            self.audioMixerQueue.sync {
+                if let mixer = self.audioTrackMixer {
+                    for sample in mixer.drain() {
+                        self.add(sample: sample, to: self.audioWriterInput)
+                    }
+                }
+            }
+
+            self.videoWriterInput?.markAsFinished()
+            self.audioWriterInput?.markAsFinished()
+
+            guard let writer = self.videoWriter else {
+                self.finishExternalStop(
+                    outputURL: outputURL,
+                    didCreate: didCreate,
+                    hadVideo: hadVideo,
+                    triggerError: error,
+                    finishError: nil,
+                    writerFailed: true,
+                )
+                return
+            }
+
+            let deliver: (Error?, Bool) -> Void = { finishError, writerFailed in
+                self.finishExternalStop(
+                    outputURL: outputURL,
+                    didCreate: didCreate,
+                    hadVideo: hadVideo,
+                    triggerError: error,
+                    finishError: finishError,
+                    writerFailed: writerFailed,
+                )
+            }
+
+            if writer.status == .writing {
+                writer.finishWriting {
+                    if let finishError = writer.error {
+                        self.deleteOutputFileIfNeeded(outputURL: outputURL, didCreate: didCreate)
+                        deliver(finishError, true)
+                        return
+                    }
+                    deliver(nil, false)
+                }
+            } else if writer.status == .failed {
+                self.deleteOutputFileIfNeeded(outputURL: outputURL, didCreate: didCreate)
+                deliver(writer.error, true)
+            } else {
+                deliver(nil, false)
+            }
+        })
+    }
+
+    private func finishExternalStop(
+        outputURL: URL?,
+        didCreate: Bool,
+        hadVideo: Bool,
+        triggerError: Error?,
+        finishError: Error?,
+        writerFailed: Bool,
+    ) {
+        stateLock.lock()
+        isFinalizingExternally = false
+        isRecording = false
+        stateLock.unlock()
+
+        let combinedError = triggerError ?? finishError
+        if !hadVideo {
+            deleteOutputFileIfNeeded(outputURL: outputURL, didCreate: didCreate)
+            onExternalStop?(nil, combinedError)
+            return
+        }
+        let exists = outputURL.map { FileManager.default.fileExists(atPath: $0.path) } ?? false
+        let url: URL? = (!writerFailed && exists) ? outputURL : nil
+        onExternalStop?(url, combinedError)
+    }
+
+    public func screenRecorder(
+        _ screenRecorder: RPScreenRecorder,
+        didStopRecordingWithError error: Error,
+        previewViewController: RPPreviewViewController?
+    ) {
+        if !startSettled {
+            failPendingStart(
+                error,
+                outputURL: videoOutputURL,
+                didCreate: didCreateOutputFile,
+            )
+            return
+        }
+        guard isRecording, !stopRequested else { return }
+        handleRecordingEndedExternally(error: error)
     }
 }
