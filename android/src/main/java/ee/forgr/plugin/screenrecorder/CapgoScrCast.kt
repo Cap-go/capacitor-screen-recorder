@@ -74,11 +74,16 @@ class CapgoScrCast private constructor(
                     startListener = null
                 }
                 STATE_IDLE -> {
+                    val startPending = startListener != null
                     val error = intent.getSerializableExtra(EXTRA_ERROR) as? Throwable
                     if (error != null) {
                         startListener?.onFailed(error)
+                    } else if (startPending) {
+                        startListener?.onFailed(
+                            IllegalStateException("Recording stopped before it started"),
+                        )
                     }
-                    cleanupSession()
+                    cleanupSession(deleteEmptyOutput = startPending || error != null)
                 }
             }
         }
@@ -213,7 +218,7 @@ class CapgoScrCast private constructor(
         receiverRegistered = false
     }
 
-    private fun cleanupSession() {
+    private fun cleanupSession(deleteEmptyOutput: Boolean = false) {
         startListener = null
         unregisterRecordingReceiver()
 
@@ -227,8 +232,12 @@ class CapgoScrCast private constructor(
         recordingSession = null
 
         outputFile?.let { file ->
-            MediaScannerConnection.scanFile(activity, arrayOf(file.absolutePath), null) { path, uri ->
-                Log.i("CapgoScreenRecorder", "Saved recording: $path uri=$uri")
+            if (file.isFile && file.length() > 0L) {
+                MediaScannerConnection.scanFile(activity, arrayOf(file.absolutePath), null) { path, uri ->
+                    Log.i("CapgoScreenRecorder", "Saved recording: $path uri=$uri")
+                }
+            } else if (deleteEmptyOutput && file.exists()) {
+                runCatching { file.delete() }
             }
         }
         outputFile = null
