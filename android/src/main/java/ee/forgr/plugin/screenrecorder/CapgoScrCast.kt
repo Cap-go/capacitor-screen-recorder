@@ -77,6 +77,10 @@ class CapgoScrCast private constructor(
                     val error = intent.getSerializableExtra(EXTRA_ERROR) as? Throwable
                     if (error != null) {
                         startListener?.onFailed(error)
+                    } else if (startListener != null) {
+                        startListener?.onFailed(
+                            IllegalStateException("Recording stopped before it started"),
+                        )
                     }
                     cleanupSession()
                 }
@@ -227,8 +231,10 @@ class CapgoScrCast private constructor(
         recordingSession = null
 
         outputFile?.let { file ->
-            MediaScannerConnection.scanFile(activity, arrayOf(file.absolutePath), null) { path, uri ->
-                Log.i("CapgoScreenRecorder", "Saved recording: $path uri=$uri")
+            if (file.isFile && file.length() > 0L) {
+                MediaScannerConnection.scanFile(activity, arrayOf(file.absolutePath), null) { path, uri ->
+                    Log.i("CapgoScreenRecorder", "Saved recording: $path uri=$uri")
+                }
             }
         }
         outputFile = null
