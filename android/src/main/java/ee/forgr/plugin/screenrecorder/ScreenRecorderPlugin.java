@@ -16,7 +16,6 @@ public class ScreenRecorderPlugin extends Plugin {
 
     private CapgoScrCast videoRecorder;
     private CapgoScrCast audioRecorder;
-    private boolean recordingWithAudio = false;
     private CapgoScrCast activeRecorder = null;
 
     @Override
@@ -34,7 +33,6 @@ public class ScreenRecorderPlugin extends Plugin {
                     return;
                 }
                 activeRecorder = null;
-                recordingWithAudio = false;
                 final JSObject ret = new JSObject();
                 ret.put("url", path != null ? Uri.fromFile(new File(path)).toString() : "");
                 if (error != null) {
@@ -53,8 +51,6 @@ public class ScreenRecorderPlugin extends Plugin {
         try {
             final boolean recordAudio = call.getBoolean("recordAudio", false);
             final String format = call.getString("format");
-            recordingWithAudio = recordAudio;
-
             final CapgoScrCast recorder = recordAudio ? audioRecorder : videoRecorder;
             final Options configuredOptions = VideoFormatResolver.INSTANCE.applyTo(recorder.getOptions(), format);
             recorder.updateOptions(configuredOptions);
@@ -74,7 +70,6 @@ public class ScreenRecorderPlugin extends Plugin {
                     @Override
                     public void onFailed(final Throwable error) {
                         activeRecorder = null;
-                        recordingWithAudio = false;
                         final Exception exception = error instanceof Exception ? (Exception) error : new Exception(error);
                         call.reject("Could not start screen recording", exception);
                         call.release(bridge);
@@ -83,13 +78,11 @@ public class ScreenRecorderPlugin extends Plugin {
             );
             if (!started) {
                 activeRecorder = null;
-                recordingWithAudio = false;
                 call.reject("Could not start screen recording", new IllegalStateException("A screen recording is already in progress"));
                 call.release(bridge);
             }
         } catch (final Exception e) {
             activeRecorder = null;
-            recordingWithAudio = false;
             call.reject("Could not start screen recording", e);
             if (keptAlive) {
                 call.release(bridge);
@@ -105,7 +98,6 @@ public class ScreenRecorderPlugin extends Plugin {
                 recorder.stopRecording();
             }
             activeRecorder = null;
-            recordingWithAudio = false;
             call.resolve();
         } catch (final Exception e) {
             call.reject("Could not stop screen recording", e);
