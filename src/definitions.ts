@@ -118,8 +118,8 @@ export interface ScreenRecorderPlugin {
    * Listen for recordings that ended without {@link stop} being called.
    *
    * @param eventName - `onStopped`
-   * @param listenerFunc - Called with a {@link ScreenRecorderStoppedEvent}
-   * (`url` and optional `error`) when the recording ended outside {@link stop}.
+   * @param listenerFunc - Called with a `ScreenRecorderStoppedEvent`
+   * (`url` and optional `error`) when the recording ended outside `stop()`.
    * @since 8.4.0
    */
   addListener(

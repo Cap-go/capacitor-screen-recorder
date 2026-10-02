@@ -164,10 +164,10 @@ addListener(eventName: 'onStopped', listenerFunc: (event: ScreenRecorderStoppedE
 
 Listen for recordings that ended without {@link stop} being called.
 
-| Param              | Type                                                                                                  | Description                                                                                                                                                              |
-| ------------------ | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **`eventName`**    | <code>'onStopped'</code>                                                                              | - `onStopped`                                                                                                                                                            |
-| **`listenerFunc`** | <code>(event: <a href="#screenrecorderstoppedevent">ScreenRecorderStoppedEvent</a>) =&gt; void</code> | - Called with a {@link <a href="#screenrecorderstoppedevent">ScreenRecorderStoppedEvent</a>} (`url` and optional `error`) when the recording ended outside {@link stop}. |
+| Param              | Type                                                                                                  | Description                                                                                                          |
+| ------------------ | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| **`eventName`**    | <code>'onStopped'</code>                                                                              | - `onStopped`                                                                                                        |
+| **`listenerFunc`** | <code>(event: <a href="#screenrecorderstoppedevent">ScreenRecorderStoppedEvent</a>) =&gt; void</code> | - Called with a `ScreenRecorderStoppedEvent` (`url` and optional `error`) when the recording ended outside `stop()`. |
 
 **Returns:** <code>Promise&lt;<a href="#pluginlistenerhandle">PluginListenerHandle</a>&gt;</code>
 
