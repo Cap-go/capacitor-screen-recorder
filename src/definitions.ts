@@ -1,3 +1,32 @@
+import type { PluginListenerHandle } from '@capacitor/core';
+
+/**
+ * Payload for the `onStopped` event.
+ *
+ * Fired when a recording ends without {@link ScreenRecorderPlugin.stop} being
+ * called: the user stopped capture from the system UI (Android "Stop sharing"),
+ * the recorder hit a limit (max duration or max file size), or the system
+ * interrupted capture (iOS, for example an incoming call).
+ *
+ * @since 8.4.0
+ */
+export interface ScreenRecorderStoppedEvent {
+  /**
+   * Local URI of the finished recording (`file://` on Android).
+   * Empty string when the file path could not be resolved.
+   *
+   * @since 8.4.0
+   */
+  url: string;
+
+  /**
+   * Error message when the recording ended with a failure.
+   *
+   * @since 8.4.0
+   */
+  error?: string;
+}
+
 /**
  * Supported video container formats for screen recordings.
  *
@@ -84,6 +113,26 @@ export interface ScreenRecorderPlugin {
    * ```
    */
   stop(): Promise<void>;
+
+  /**
+   * Listen for recordings that ended without {@link stop} being called.
+   *
+   * @param eventName - `onStopped`
+   * @param listenerFunc - Called with a {@link ScreenRecorderStoppedEvent}
+   * (`url` and optional `error`) when the recording ended outside {@link stop}.
+   * @since 8.4.0
+   */
+  addListener(
+    eventName: 'onStopped',
+    listenerFunc: (event: ScreenRecorderStoppedEvent) => void,
+  ): Promise<PluginListenerHandle>;
+
+  /**
+   * Remove all listeners registered with {@link addListener}.
+   *
+   * @since 8.4.0
+   */
+  removeAllListeners(): Promise<void>;
 
   /**
    * Get the native Capacitor plugin version.
