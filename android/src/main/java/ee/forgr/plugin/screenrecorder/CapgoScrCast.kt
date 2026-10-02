@@ -235,6 +235,8 @@ class CapgoScrCast private constructor(
                 MediaScannerConnection.scanFile(activity, arrayOf(file.absolutePath), null) { path, uri ->
                     Log.i("CapgoScreenRecorder", "Saved recording: $path uri=$uri")
                 }
+            } else if (file.exists()) {
+                runCatching { file.delete() }
             }
         }
         outputFile = null
