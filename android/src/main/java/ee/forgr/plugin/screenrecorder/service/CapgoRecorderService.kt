@@ -23,6 +23,7 @@ import dev.bmcreations.scrcast.internal.recorder.*
 import dev.bmcreations.scrcast.internal.recorder.service.orientations
 import dev.bmcreations.scrcast.recorder.*
 import dev.bmcreations.scrcast.recorder.notification.NotificationProvider
+import ee.forgr.plugin.screenrecorder.CapgoScrCast
 import ee.forgr.plugin.screenrecorder.MediaRecorderPrepare
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
@@ -66,10 +67,13 @@ class CapgoRecorderService : Service() {
         }
     }
 
+    private var sessionGeneration: Long = 0L
+
     private var state: RecordingState = RecordingState.Idle()
         set(value) {
             field = value
             broadcaster.sendBroadcast(Intent(value.stateString()).apply {
+                putExtra(CapgoScrCast.EXTRA_SESSION_GENERATION, sessionGeneration)
                 if (value is RecordingState.Delay) {
                     putExtra(EXTRA_DELAY_REMAINING, value.remainingSeconds)
                 } else if (value is RecordingState.Idle) {
@@ -112,7 +116,8 @@ class CapgoRecorderService : Service() {
         }
 
     private var mediaRecorder: MediaRecorder? = null
-
+    private var recordingStarted = false
+    private var prepareInProgress = false
 
     private fun createMediaRecorder(): MediaRecorder {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -238,6 +243,7 @@ class CapgoRecorderService : Service() {
 
     private fun recordInternal(code: Int, data: Intent) {
         GlobalScope.launch(Dispatchers.Main) {
+            prepareInProgress = true
             startForeground(
                 notificationProvider.getNotificationId(),
                 notificationProvider.get(state)
@@ -259,44 +265,73 @@ class CapgoRecorderService : Service() {
 
             mediaProjection?.registerCallback(mediaProjectionCallback, Handler())
             if (!createRecorder()) {
+                prepareInProgress = false
                 stopRecording(IOException("MediaRecorder prepare failed"))
                 return@launch
             }
             virtualDisplay // touch
             try {
                 mediaRecorder?.start()
+                recordingStarted = true
                 state = RecordingState.Recording
                 notificationProvider.update(state)
             } catch (e: Exception) {
                 stopRecording(e)
+            } finally {
+                prepareInProgress = false
             }
         }
     }
 
     private fun stopRecording(error: Throwable? = null) {
+        finalizeRecorder()
         mediaProjection?.stop()
-
+        mediaProjection = null
         state = RecordingState.Idle(error)
         stopForeground(true)
     }
 
-    private fun cleanupProjection() {
+    private fun finalizeRecorder() {
         mediaProjection?.unregisterCallback(mediaProjectionCallback)
-        mediaProjection = null
-
         _virtualDisplay?.release()
         _virtualDisplay = null
-
         runCatching {
             mediaRecorder?.stop()
         }
         releaseRecorder()
+        recordingStarted = false
+        prepareInProgress = false
+    }
+
+    private fun cleanupProjection() {
+        finalizeRecorder()
+        mediaProjection = null
     }
 
     private inner class MediaProjectionCallback : MediaProjection.Callback() {
         override fun onStop() {
             Log.d("scrcast", "projection on stop")
+            val hadStarted = recordingStarted
+            val preparing = prepareInProgress
             cleanupProjection()
+            when {
+                state is RecordingState.Idle && (state as RecordingState.Idle).error != null -> {
+                    // stopRecording() already published Idle with an error.
+                }
+                state is RecordingState.Idle && hadStarted -> {
+                    // stopRecording() already published Idle for an active recording.
+                }
+                !hadStarted || preparing -> {
+                    state = RecordingState.Idle(
+                        IllegalStateException("Recording stopped before it started"),
+                    )
+                    stopForeground(true)
+                }
+                else -> {
+                    state = RecordingState.Idle()
+                    stopForeground(true)
+                }
+            }
         }
     }
 
@@ -307,6 +342,7 @@ class CapgoRecorderService : Service() {
             dpi = it.getFloatExtra("dpi", 0f)
             outputFile = it.getStringExtra("outputFile") ?: ""
             recordAudio = it.getBooleanExtra("recordAudio", false)
+            sessionGeneration = it.getLongExtra(CapgoScrCast.EXTRA_SESSION_GENERATION, 0L)
 
             startRecording(
                 code = it.getIntExtra("code", -1),

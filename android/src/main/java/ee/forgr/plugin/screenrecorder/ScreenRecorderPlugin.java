@@ -1,11 +1,13 @@
 package ee.forgr.plugin.screenrecorder;
 
+import android.net.Uri;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import dev.bmcreations.scrcast.config.Options;
+import java.io.File;
 
 @CapacitorPlugin(name = "ScreenRecorder")
 public class ScreenRecorderPlugin extends Plugin {
@@ -14,7 +16,7 @@ public class ScreenRecorderPlugin extends Plugin {
 
     private CapgoScrCast videoRecorder;
     private CapgoScrCast audioRecorder;
-    private boolean recordingWithAudio = false;
+    private CapgoScrCast activeRecorder = null;
 
     @Override
     public void load() {
@@ -23,6 +25,24 @@ public class ScreenRecorderPlugin extends Plugin {
         final Options options = new Options();
         videoRecorder.updateOptions(options);
         audioRecorder.updateOptions(options);
+
+        final CapgoScrCast.ExternalStopListener externalStopListener = new CapgoScrCast.ExternalStopListener() {
+            @Override
+            public void onExternalStop(final String path, final String error) {
+                if (activeRecorder == null) {
+                    return;
+                }
+                activeRecorder = null;
+                final JSObject ret = new JSObject();
+                ret.put("url", path != null ? Uri.fromFile(new File(path)).toString() : "");
+                if (error != null) {
+                    ret.put("error", error);
+                }
+                notifyListeners("onStopped", ret);
+            }
+        };
+        videoRecorder.setExternalStopListener(externalStopListener);
+        audioRecorder.setExternalStopListener(externalStopListener);
     }
 
     @PluginMethod
@@ -31,8 +51,6 @@ public class ScreenRecorderPlugin extends Plugin {
         try {
             final boolean recordAudio = call.getBoolean("recordAudio", false);
             final String format = call.getString("format");
-            recordingWithAudio = recordAudio;
-
             final CapgoScrCast recorder = recordAudio ? audioRecorder : videoRecorder;
             final Options configuredOptions = VideoFormatResolver.INSTANCE.applyTo(recorder.getOptions(), format);
             recorder.updateOptions(configuredOptions);
@@ -44,13 +62,14 @@ public class ScreenRecorderPlugin extends Plugin {
                 new CapgoScrCast.StartListener() {
                     @Override
                     public void onStarted() {
+                        activeRecorder = recorder;
                         call.resolve();
                         call.release(bridge);
                     }
 
                     @Override
                     public void onFailed(final Throwable error) {
-                        recordingWithAudio = false;
+                        activeRecorder = null;
                         final Exception exception = error instanceof Exception ? (Exception) error : new Exception(error);
                         call.reject("Could not start screen recording", exception);
                         call.release(bridge);
@@ -58,12 +77,12 @@ public class ScreenRecorderPlugin extends Plugin {
                 }
             );
             if (!started) {
-                recordingWithAudio = false;
+                activeRecorder = null;
                 call.reject("Could not start screen recording", new IllegalStateException("A screen recording is already in progress"));
                 call.release(bridge);
             }
         } catch (final Exception e) {
-            recordingWithAudio = false;
+            activeRecorder = null;
             call.reject("Could not start screen recording", e);
             if (keptAlive) {
                 call.release(bridge);
@@ -74,12 +93,11 @@ public class ScreenRecorderPlugin extends Plugin {
     @PluginMethod
     public void stop(PluginCall call) {
         try {
-            if (recordingWithAudio) {
-                audioRecorder.stopRecording();
-            } else {
-                videoRecorder.stopRecording();
+            final CapgoScrCast recorder = activeRecorder;
+            if (recorder != null) {
+                recorder.stopRecording();
             }
-            recordingWithAudio = false;
+            activeRecorder = null;
             call.resolve();
         } catch (final Exception e) {
             call.reject("Could not stop screen recording", e);
