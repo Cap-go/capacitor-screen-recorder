@@ -7,18 +7,16 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.ServiceConnection
+import android.content.pm.PackageManager
 import android.media.MediaScannerConnection
 import android.os.IBinder
 import android.util.DisplayMetrics
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.result.ActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
-import com.karumi.dexter.Dexter
-import com.karumi.dexter.MultiplePermissionsReport
-import com.karumi.dexter.PermissionToken
-import com.karumi.dexter.listener.PermissionRequest
-import com.karumi.dexter.listener.multi.MultiplePermissionsListener
 import dev.bmcreations.scrcast.config.Options
 import dev.bmcreations.scrcast.internal.recorder.Action
 import dev.bmcreations.scrcast.internal.recorder.EXTRA_ERROR
@@ -89,20 +87,13 @@ class CapgoScrCast private constructor(
         }
     }
 
-    private val permissionListener = object : MultiplePermissionsListener {
-        override fun onPermissionsChecked(report: MultiplePermissionsReport?) {
-            if (report?.areAllPermissionsGranted() == true) {
-                startProjection.launch(Unit)
-            } else {
-                notifyStartFailed(SecurityException("Required permissions were not granted"))
-            }
-        }
-
-        override fun onPermissionRationaleShouldBeShown(
-            permissions: MutableList<PermissionRequest>?,
-            token: PermissionToken?,
-        ) {
-            token?.continuePermissionRequest()
+    private val requestRuntimePermissions = activity.registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { _ ->
+        if (requiredRuntimePermissions().all { isPermissionGranted(it) }) {
+            startProjection.launch(Unit)
+        } else {
+            notifyStartFailed(SecurityException("Required permissions were not granted"))
         }
     }
 
@@ -136,18 +127,25 @@ class CapgoScrCast private constructor(
             return false
         }
         startListener = listener
-        val permissions = buildList {
-            add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-            add(Manifest.permission.READ_EXTERNAL_STORAGE)
-            if (recordAudio) {
-                add(Manifest.permission.RECORD_AUDIO)
-            }
+        val missing = requiredRuntimePermissions().filterNot { isPermissionGranted(it) }
+        if (missing.isEmpty()) {
+            startProjection.launch(Unit)
+        } else {
+            requestRuntimePermissions.launch(missing.toTypedArray())
         }
-        Dexter.withContext(activity)
-            .withPermissions(permissions)
-            .withListener(permissionListener)
-            .check()
         return true
+    }
+
+    private fun requiredRuntimePermissions(): List<String> = buildList {
+        add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        add(Manifest.permission.READ_EXTERNAL_STORAGE)
+        if (recordAudio) {
+            add(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+    private fun isPermissionGranted(permission: String): Boolean {
+        return ContextCompat.checkSelfPermission(activity, permission) == PackageManager.PERMISSION_GRANTED
     }
 
     private fun notifyStartFailed(error: Throwable) {
