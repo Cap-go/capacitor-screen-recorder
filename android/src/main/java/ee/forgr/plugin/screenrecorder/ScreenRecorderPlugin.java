@@ -16,6 +16,7 @@ public class ScreenRecorderPlugin extends Plugin {
 
     private CapgoScrCast videoRecorder;
     private CapgoScrCast audioRecorder;
+    private CapgoScrCast pendingRecorder = null;
     private CapgoScrCast activeRecorder = null;
 
     @Override
@@ -62,6 +63,9 @@ public class ScreenRecorderPlugin extends Plugin {
                 new CapgoScrCast.StartListener() {
                     @Override
                     public void onStarted() {
+                        if (pendingRecorder == recorder) {
+                            pendingRecorder = null;
+                        }
                         activeRecorder = recorder;
                         call.resolve();
                         call.release(bridge);
@@ -69,6 +73,9 @@ public class ScreenRecorderPlugin extends Plugin {
 
                     @Override
                     public void onFailed(final Throwable error) {
+                        if (pendingRecorder == recorder) {
+                            pendingRecorder = null;
+                        }
                         activeRecorder = null;
                         final Exception exception = error instanceof Exception ? (Exception) error : new Exception(error);
                         call.reject("Could not start screen recording", exception);
@@ -77,11 +84,15 @@ public class ScreenRecorderPlugin extends Plugin {
                 }
             );
             if (!started) {
+                pendingRecorder = null;
                 activeRecorder = null;
                 call.reject("Could not start screen recording", new IllegalStateException("A screen recording is already in progress"));
                 call.release(bridge);
+            } else {
+                pendingRecorder = recorder;
             }
         } catch (final Exception e) {
+            pendingRecorder = null;
             activeRecorder = null;
             call.reject("Could not start screen recording", e);
             if (keptAlive) {
@@ -93,10 +104,11 @@ public class ScreenRecorderPlugin extends Plugin {
     @PluginMethod
     public void stop(PluginCall call) {
         try {
-            final CapgoScrCast recorder = activeRecorder;
+            final CapgoScrCast recorder = activeRecorder != null ? activeRecorder : pendingRecorder;
             if (recorder != null) {
                 recorder.stopRecording();
             }
+            pendingRecorder = null;
             activeRecorder = null;
             call.resolve();
         } catch (final Exception e) {
