@@ -49,10 +49,12 @@ public class ScreenRecorderPlugin extends Plugin {
     @PluginMethod
     public void start(final PluginCall call) {
         boolean keptAlive = false;
+        CapgoScrCast startRecorder = null;
         try {
             final boolean recordAudio = call.getBoolean("recordAudio", false);
             final String format = call.getString("format");
-            final CapgoScrCast recorder = recordAudio ? audioRecorder : videoRecorder;
+            startRecorder = recordAudio ? audioRecorder : videoRecorder;
+            final CapgoScrCast recorder = startRecorder;
             final Options configuredOptions = VideoFormatResolver.INSTANCE.applyTo(recorder.getOptions(), format);
             recorder.updateOptions(configuredOptions);
             recorder.updateVideoFormat(format);
@@ -76,7 +78,9 @@ public class ScreenRecorderPlugin extends Plugin {
                         if (pendingRecorder == recorder) {
                             pendingRecorder = null;
                         }
-                        activeRecorder = null;
+                        if (activeRecorder == recorder) {
+                            activeRecorder = null;
+                        }
                         final Exception exception = error instanceof Exception ? (Exception) error : new Exception(error);
                         call.reject("Could not start screen recording", exception);
                         call.release(bridge);
@@ -84,16 +88,15 @@ public class ScreenRecorderPlugin extends Plugin {
                 }
             );
             if (!started) {
-                pendingRecorder = null;
-                activeRecorder = null;
                 call.reject("Could not start screen recording", new IllegalStateException("A screen recording is already in progress"));
                 call.release(bridge);
             } else {
                 pendingRecorder = recorder;
             }
         } catch (final Exception e) {
-            pendingRecorder = null;
-            activeRecorder = null;
+            if (startRecorder != null && pendingRecorder == startRecorder) {
+                pendingRecorder = null;
+            }
             call.reject("Could not start screen recording", e);
             if (keptAlive) {
                 call.release(bridge);

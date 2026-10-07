@@ -80,6 +80,14 @@ class CapgoScrCast private constructor(
                     if (broadcastGeneration != sessionGeneration) {
                         return
                     }
+                    if (stopRequested) {
+                        startListener?.onFailed(
+                            IllegalStateException("Recording stopped before it started"),
+                        )
+                        startListener = null
+                        broadcaster.sendBroadcast(Intent(Action.Stop.name))
+                        return
+                    }
                     startListener?.onStarted()
                     startListener = null
                 }
@@ -112,6 +120,10 @@ class CapgoScrCast private constructor(
     private val requestRuntimePermissions = activity.registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { _ ->
+        if (startListener == null || stopRequested) {
+            abandonCanceledPendingStart()
+            return@registerForActivityResult
+        }
         if (requiredRuntimePermissions().all { isPermissionGranted(it) }) {
             startProjection.launch(Unit)
         } else {
@@ -120,6 +132,10 @@ class CapgoScrCast private constructor(
     }
 
     private val startProjection = activity.registerForActivityResult(CapgoRecordScreen()) { result ->
+        if (startListener == null || stopRequested) {
+            abandonCanceledPendingStart()
+            return@registerForActivityResult
+        }
         if (result.resultCode != Activity.RESULT_OK) {
             notifyStartFailed(IllegalStateException("Screen capture permission denied"))
             return@registerForActivityResult
@@ -178,7 +194,20 @@ class CapgoScrCast private constructor(
 
     fun stopRecording() {
         stopRequested = true
+        if (recordingSession == null && startListener != null) {
+            abandonCanceledPendingStart()
+            return
+        }
         broadcaster.sendBroadcast(Intent(Action.Stop.name))
+    }
+
+    private fun abandonCanceledPendingStart() {
+        if (startListener == null) {
+            stopRequested = false
+            return
+        }
+        notifyStartFailed(IllegalStateException("Recording stopped before it started"))
+        stopRequested = false
     }
 
     private fun resolveVideoSize(options: Options): Options {
@@ -191,7 +220,10 @@ class CapgoScrCast private constructor(
     }
 
     private fun startService(result: ActivityResult, file: File) {
-        stopRequested = false
+        if (startListener == null || stopRequested) {
+            abandonCanceledPendingStart()
+            return
+        }
         sessionGeneration += 1
         outputFile = file
         val session = Intent(activity, CapgoRecorderService::class.java).apply {
