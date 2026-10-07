@@ -1,11 +1,27 @@
 # Capacitor-screen-recorder
-<a href="https://capgo.app/"><img src="https://capgo.app/readme-banner.svg?repo=Cap-go/capacitor-screen-recorder" alt="Capgo - Instant updates for Capacitor" /></a>
+
+Record the device screen from your Capacitor app, with optional audio, for bug reports, tutorials and demos.
+
+<a href="https://capgo.app/?ref=plugin_screen_recorder"><img src="https://capgo.app/readme-banner.svg?repo=Cap-go/capacitor-screen-recorder" alt="Capgo - Instant updates for Capacitor" /></a>
 
 <div align="center">
-  <h2><a href="https://capgo.app/?ref=plugin_screen_recorder"> ➡️ Get Instant updates for your App with Capgo</a></h2>
-  <h2><a href="https://capgo.app/consulting/?ref=plugin_screen_recorder"> Missing a feature? We’ll build the plugin for you 💪</a></h2>
+  <p><b>Capgo</b>: open-source live updates for Ionic and Capacitor apps. Ship OTA fixes and features instantly, without waiting for app store review.</p>
+  <h2><a href="https://capgo.app/register/?ref=plugin_screen_recorder">➡️ Get started for free</a></h2>
+  <p>14-day unlimited free trial. No credit card required</p>
+  <p><a href="https://capgo.app/consulting/?ref=plugin_screen_recorder">Missing a feature? We'll build the plugin for you 💪</a></p>
 </div>
-Record device's screen
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Cap-go/capacitor-screen-recorder/main/assets/github-social-preview.png" alt="@capgo/capacitor-screen-recorder for Capacitor apps" width="300" />
+</p>
+
+## Key features
+
+- **Start**: `start()` begins recording after the system consent prompt.
+- **Stop**: `stop()` ends the recording.
+- **Audio**: set `recordAudio` to capture sound with the video.
+- **Native capture**: ReplayKit on iOS, saved to the Photos library, and MediaProjection on Android.
+- **Platforms**: iOS and Android. Not available on web.
 
 ## Documentation
 
