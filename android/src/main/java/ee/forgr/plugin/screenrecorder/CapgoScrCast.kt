@@ -38,6 +38,13 @@ class CapgoScrCast private constructor(
     private var serviceBinder: CapgoRecorderService? = null
     private var outputFile: File? = null
     private var startListener: StartListener? = null
+    private var stopRequested = false
+    private var sessionGeneration = 0L
+
+    /**
+     * Invoked when a recording ends without {@link #stopRecording()} having been called.
+     */
+    var externalStopListener: ExternalStopListener? = null
     private var receiverRegistered = false
 
     private val metrics by lazy {
@@ -68,11 +75,30 @@ class CapgoScrCast private constructor(
         override fun onReceive(context: Context?, intent: Intent?) {
             when (intent?.action) {
                 STATE_RECORDING -> {
+                    val broadcastGeneration =
+                        intent?.getLongExtra(EXTRA_SESSION_GENERATION, -1L) ?: -1L
+                    if (broadcastGeneration != sessionGeneration) {
+                        return
+                    }
+                    if (stopRequested) {
+                        startListener?.onFailed(
+                            IllegalStateException("Recording stopped before it started"),
+                        )
+                        startListener = null
+                        broadcaster.sendBroadcast(Intent(Action.Stop.name))
+                        return
+                    }
                     startListener?.onStarted()
                     startListener = null
                 }
                 STATE_IDLE -> {
+                    val broadcastGeneration =
+                        intent?.getLongExtra(EXTRA_SESSION_GENERATION, -1L) ?: -1L
+                    if (broadcastGeneration != sessionGeneration) {
+                        return
+                    }
                     val startPending = startListener != null
+                    val sessionActive = recordingSession != null
                     val error = intent.getSerializableExtra(EXTRA_ERROR) as? Throwable
                     if (error != null) {
                         startListener?.onFailed(error)
@@ -81,7 +107,11 @@ class CapgoScrCast private constructor(
                             IllegalStateException("Recording stopped before it started"),
                         )
                     }
-                    cleanupSession(deleteEmptyOutput = startPending || error != null)
+                    val savedPath = cleanupSession(deleteEmptyOutput = startPending || error != null)
+                    if (!startPending && sessionActive && !stopRequested) {
+                        externalStopListener?.onExternalStop(savedPath, error?.message)
+                    }
+                    stopRequested = false
                 }
             }
         }
@@ -90,6 +120,10 @@ class CapgoScrCast private constructor(
     private val requestRuntimePermissions = activity.registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { _ ->
+        if (startListener == null || stopRequested) {
+            abandonCanceledPendingStart()
+            return@registerForActivityResult
+        }
         if (requiredRuntimePermissions().all { isPermissionGranted(it) }) {
             startProjection.launch(Unit)
         } else {
@@ -98,6 +132,10 @@ class CapgoScrCast private constructor(
     }
 
     private val startProjection = activity.registerForActivityResult(CapgoRecordScreen()) { result ->
+        if (startListener == null || stopRequested) {
+            abandonCanceledPendingStart()
+            return@registerForActivityResult
+        }
         if (result.resultCode != Activity.RESULT_OK) {
             notifyStartFailed(IllegalStateException("Screen capture permission denied"))
             return@registerForActivityResult
@@ -155,7 +193,21 @@ class CapgoScrCast private constructor(
     }
 
     fun stopRecording() {
+        stopRequested = true
+        if (recordingSession == null && startListener != null) {
+            abandonCanceledPendingStart()
+            return
+        }
         broadcaster.sendBroadcast(Intent(Action.Stop.name))
+    }
+
+    private fun abandonCanceledPendingStart() {
+        if (startListener == null) {
+            stopRequested = false
+            return
+        }
+        notifyStartFailed(IllegalStateException("Recording stopped before it started"))
+        stopRequested = false
     }
 
     private fun resolveVideoSize(options: Options): Options {
@@ -168,6 +220,11 @@ class CapgoScrCast private constructor(
     }
 
     private fun startService(result: ActivityResult, file: File) {
+        if (startListener == null || stopRequested) {
+            abandonCanceledPendingStart()
+            return
+        }
+        sessionGeneration += 1
         outputFile = file
         val session = Intent(activity, CapgoRecorderService::class.java).apply {
             putExtra("code", result.resultCode)
@@ -177,6 +234,7 @@ class CapgoScrCast private constructor(
             putExtra("dpi", dpi)
             putExtra("rotation", activity.windowManager.defaultDisplay.rotation)
             putExtra("recordAudio", recordAudio)
+            putExtra(EXTRA_SESSION_GENERATION, sessionGeneration)
         }
         recordingSession = session
 
@@ -201,6 +259,7 @@ class CapgoScrCast private constructor(
         unregisterRecordingReceiver()
         recordingSession = null
         outputFile = null
+        stopRequested = false
         notifyStartFailed(error)
     }
 
@@ -216,7 +275,7 @@ class CapgoScrCast private constructor(
         receiverRegistered = false
     }
 
-    private fun cleanupSession(deleteEmptyOutput: Boolean = false) {
+    private fun cleanupSession(deleteEmptyOutput: Boolean = false): String? {
         startListener = null
         unregisterRecordingReceiver()
 
@@ -229,17 +288,24 @@ class CapgoScrCast private constructor(
         recordingSession?.let { activity.stopService(it) }
         recordingSession = null
 
-        outputFile?.let { file ->
+        val savedPath = outputFile?.absolutePath
+        val deliverablePath = savedPath?.let { path ->
+            val file = File(path)
             if (file.isFile && file.length() > 0L) {
-                MediaScannerConnection.scanFile(activity, arrayOf(file.absolutePath), null) { path, uri ->
-                    Log.i("CapgoScreenRecorder", "Saved recording: $path uri=$uri")
+                MediaScannerConnection.scanFile(activity, arrayOf(path), null) { scanPath, uri ->
+                    Log.i("CapgoScreenRecorder", "Saved recording: $scanPath uri=$uri")
                 }
-            } else if (deleteEmptyOutput && file.exists()) {
-                runCatching { file.delete() }
+                path
+            } else {
+                if (deleteEmptyOutput && file.exists()) {
+                    runCatching { file.delete() }
+                }
+                null
             }
         }
         outputFile = null
         CapgoRecordingCoordinator.release()
+        return deliverablePath
     }
 
     interface StartListener {
@@ -247,7 +313,13 @@ class CapgoScrCast private constructor(
         fun onFailed(error: Throwable)
     }
 
+    fun interface ExternalStopListener {
+        fun onExternalStop(path: String?, error: String?)
+    }
+
     companion object {
+        const val EXTRA_SESSION_GENERATION = "capgoSessionGeneration"
+
         @JvmStatic
         fun use(activity: ComponentActivity, recordAudio: Boolean): CapgoScrCast {
             return CapgoScrCast(activity, recordAudio)
