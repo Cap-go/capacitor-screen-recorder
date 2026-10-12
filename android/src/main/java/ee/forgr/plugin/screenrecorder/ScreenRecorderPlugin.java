@@ -12,7 +12,7 @@ import java.io.File;
 @CapacitorPlugin(name = "ScreenRecorder")
 public class ScreenRecorderPlugin extends Plugin {
 
-    private final String pluginVersion = "8.4.1";
+    private final String pluginVersion = "8.4.2";
 
     private CapgoScrCast videoRecorder;
     private CapgoScrCast audioRecorder;
