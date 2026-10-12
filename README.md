@@ -2,7 +2,7 @@
 
 Record the device screen from your Capacitor app, with optional audio, for bug reports, tutorials and demos.
 
-<a href="https://capgo.app/?ref=plugin_screen_recorder"><img src="https://capgo.app/readme-banner.svg?repo=Cap-go/capacitor-screen-recorder" alt="Capgo - Instant updates for Capacitor" /></a>
+<a href="https://capgo.app/?ref=plugin_screen_recorder"><img src="https://capgo.app/readme-banner.svg?repo=Cap-go/capacitor-screen-recorder" alt="Capgo - Build Capacitor apps with AI, ship updates instantly" /></a>
 
 <div align="center">
   <p><b>Capgo</b>: push fixes to your Capacitor users in minutes, build signed iOS and Android apps without a Mac, and roll back in one click.</p>
@@ -10,6 +10,8 @@ Record the device screen from your Capacitor app, with optional audio, for bug r
   <p>14-day unlimited free trial. No credit card required</p>
   <p><a href="https://capgo.app/consulting/?ref=plugin_screen_recorder">Missing a feature? We'll build the plugin for you 💪</a></p>
 </div>
+
+> 🤖 **Building with an AI coding agent?** Install [Capgo skills](https://capgo.app/skills/?ref=plugin_screen_recorder) so Claude Code, Codex, Cursor, Copilot, or Gemini CLI know how to install and use `@capgo/capacitor-screen-recorder` in your Capacitor app: `npx skills add Cap-go/capgo-skills`. Then ask your agent: *"Add @capgo/capacitor-screen-recorder to my Capacitor app and wire it up."* [Agent setup guides](https://capgo.app/agents/?ref=plugin_screen_recorder) · [Hosted MCP](https://capgo.app/docs/ai/mcp/?ref=plugin_screen_recorder)
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/Cap-go/capacitor-screen-recorder/main/assets/github-social-preview.png" alt="@capgo/capacitor-screen-recorder for Capacitor apps" width="300" />
