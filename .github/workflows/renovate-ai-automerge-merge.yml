@@ -1,0 +1,51 @@
+name: Renovate AI automerge merge
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number to merge
+        required: true
+        type: string
+      head_sha:
+        description: Expected head commit SHA
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+  checks: read
+  statuses: read
+
+concurrency:
+  group: renovate-ai-automerge-merge-${{ inputs.pr_number }}
+  cancel-in-progress: true
+
+jobs:
+  merge:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout trusted default-branch workflow content
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.1.0
+
+      - name: Re-validate gates and merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+          HEAD_SHA: ${{ inputs.head_sha }}
+        run: |
+          set -euo pipefail
+          set +e
+          bash .github/scripts/renovate-automerge-gates.sh merge \
+            "${PR_NUMBER}" \
+            "${HEAD_SHA}" \
+            "${GITHUB_REPOSITORY}"
+          gate_result=$?
+          set -e
+          if [[ "${gate_result}" -eq 2 ]]; then
+            exit 0
+          fi
+          exit "${gate_result}"
