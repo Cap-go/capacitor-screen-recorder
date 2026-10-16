@@ -1,11 +1,28 @@
 # Capacitor-screen-recorder
-<a href="https://capgo.app/"><img src="https://capgo.app/readme-banner.svg?repo=Cap-go/capacitor-screen-recorder" alt="Capgo - Instant updates for Capacitor" /></a>
+
+Record the device screen from your Capacitor app, with optional audio, for bug reports, tutorials and demos.
+
+<a href="https://capgo.app/?ref=plugin_screen_recorder"><img src="https://capgo.app/readme-banner.svg?repo=Cap-go/capacitor-screen-recorder" alt="Capgo - Build Capacitor apps with AI, ship updates instantly" /></a>
 
 <div align="center">
-  <h2><a href="https://capgo.app/?ref=plugin_screen_recorder"> ➡️ Get Instant updates for your App with Capgo</a></h2>
-  <h2><a href="https://capgo.app/consulting/?ref=plugin_screen_recorder"> Missing a feature? We’ll build the plugin for you 💪</a></h2>
+  <p><b>Capgo</b>: push fixes to your Capacitor users in minutes, build signed iOS and Android apps without a Mac, and roll back in one click.</p>
+  <h2><a href="https://capgo.app/register/?ref=plugin_screen_recorder">➡️ Get started for free</a></h2>
+  <p>14-day unlimited free trial. No credit card required</p>
 </div>
-Record device's screen
+
+> 🤖 **Building with an AI coding agent?** Install [Capgo skills](https://capgo.app/skills/?ref=plugin_screen_recorder) so Claude Code, Codex, Cursor, Copilot, or Gemini CLI know how to install and use `@capgo/capacitor-screen-recorder` in your Capacitor app: `npx skills add Cap-go/capgo-skills`. Then ask your agent: *"Add @capgo/capacitor-screen-recorder to my Capacitor app and wire it up."* [Agent setup guides](https://capgo.app/agents/?ref=plugin_screen_recorder) · [Hosted MCP](https://capgo.app/docs/ai/mcp/?ref=plugin_screen_recorder)
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Cap-go/capacitor-screen-recorder/main/assets/github-social-preview.png" alt="@capgo/capacitor-screen-recorder for Capacitor apps" width="300" />
+</p>
+
+## Key features
+
+- **Start**: `start()` begins recording after the system consent prompt.
+- **Stop**: `stop()` ends the recording.
+- **Audio**: set `recordAudio` to capture sound with the video.
+- **Native capture**: ReplayKit on iOS, saved to the Photos library, and MediaProjection on Android.
+- **Platforms**: iOS and Android. Not available on web.
 
 ## Documentation
 
@@ -45,7 +62,7 @@ npx cap sync
 
 ## IOS
 
-add NSPhotoLibraryUsageDescription in your info.plist
+add NSPhotoLibraryAddUsageDescription in your info.plist
 
 ## Android
 increase project's minSdk version to 23, it's required by the dependency HBRecorder
@@ -103,6 +120,8 @@ No configuration required for this plugin.
 
 * [`start(...)`](#start)
 * [`stop()`](#stop)
+* [`addListener('onStopped', ...)`](#addlisteneronstopped-)
+* [`removeAllListeners()`](#removealllisteners)
 * [`getPluginVersion()`](#getpluginversion)
 * [Interfaces](#interfaces)
 * [Type Aliases](#type-aliases)
@@ -154,6 +173,39 @@ recording. On Android, the video is saved directly to the gallery.
 --------------------
 
 
+### addListener('onStopped', ...)
+
+```typescript
+addListener(eventName: 'onStopped', listenerFunc: (event: ScreenRecorderStoppedEvent) => void) => Promise<PluginListenerHandle>
+```
+
+Listen for recordings that ended without {@link stop} being called.
+
+| Param              | Type                                                                                                  | Description                                                                                                          |
+| ------------------ | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| **`eventName`**    | <code>'onStopped'</code>                                                                              | - `onStopped`                                                                                                        |
+| **`listenerFunc`** | <code>(event: <a href="#screenrecorderstoppedevent">ScreenRecorderStoppedEvent</a>) =&gt; void</code> | - Called with a `ScreenRecorderStoppedEvent` (`url` and optional `error`) when the recording ended outside `stop()`. |
+
+**Returns:** <code>Promise&lt;<a href="#pluginlistenerhandle">PluginListenerHandle</a>&gt;</code>
+
+**Since:** 8.4.0
+
+--------------------
+
+
+### removeAllListeners()
+
+```typescript
+removeAllListeners() => Promise<void>
+```
+
+Remove all listeners registered with {@link addListener}.
+
+**Since:** 8.4.0
+
+--------------------
+
+
 ### getPluginVersion()
 
 ```typescript
@@ -180,6 +232,28 @@ Options for {@link ScreenRecorderPlugin.start}.
 | ----------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ | ----- |
 | **`recordAudio`** | <code>boolean</code>                                                                                                | Whether to record audio along with the screen video.                                                                                                                                                                | <code>false</code> | 1.0.0 |
 | **`format`**      | <code><a href="#screenrecordervideoformat">ScreenRecorderVideoFormat</a> \| 'video/mp4' \| 'video/quicktime'</code> | Video container format for the saved recording. Accepts `mp4`, `mov`, or MIME types `video/mp4` and `video/quicktime`. iOS supports both `mp4` and `mov`. Android records MPEG-4 (`.mp4`) regardless of this value. | <code>'mp4'</code> | 8.3.0 |
+
+
+#### PluginListenerHandle
+
+| Prop         | Type                                      |
+| ------------ | ----------------------------------------- |
+| **`remove`** | <code>() =&gt; Promise&lt;void&gt;</code> |
+
+
+#### ScreenRecorderStoppedEvent
+
+Payload for the `onStopped` event.
+
+Fired when a recording ends without {@link ScreenRecorderPlugin.stop} being
+called: the user stopped capture from the system UI (Android "Stop sharing"),
+the recorder hit a limit (max duration or max file size), or the system
+interrupted capture (iOS, for example an incoming call).
+
+| Prop        | Type                | Description                                                                                                        | Since |
+| ----------- | ------------------- | ------------------------------------------------------------------------------------------------------------------ | ----- |
+| **`url`**   | <code>string</code> | Local URI of the finished recording (`file://` on Android). Empty string when the file path could not be resolved. | 8.4.0 |
+| **`error`** | <code>string</code> | Error message when the recording ended with a failure.                                                             | 8.4.0 |
 
 
 ### Type Aliases

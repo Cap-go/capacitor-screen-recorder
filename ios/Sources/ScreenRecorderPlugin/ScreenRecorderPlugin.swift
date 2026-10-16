@@ -7,7 +7,7 @@ import Capacitor
  */
 @objc(ScreenRecorderPlugin)
 public class ScreenRecorderPlugin: CAPPlugin, CAPBridgedPlugin {
-    private let pluginVersion: String = "8.3.7"
+    private let pluginVersion: String = "8.4.3"
     public let identifier = "ScreenRecorderPlugin"
     public let jsName = "ScreenRecorder"
     public let pluginMethods: [CAPPluginMethod] = [
@@ -16,6 +16,17 @@ public class ScreenRecorderPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "getPluginVersion", returnType: CAPPluginReturnPromise)
     ]
     private let implementation = ScreenRecorder()
+
+    override public func load() {
+        implementation.onExternalStop = { [weak self] url, error in
+            guard let self = self else { return }
+            var data: [String: Any] = ["url": url?.absoluteString ?? ""]
+            if let error = error {
+                data["error"] = error.localizedDescription
+            }
+            self.notifyListeners("onStopped", data: data)
+        }
+    }
 
     @objc func start(_ call: CAPPluginCall) {
         let recordAudio = call.getBool("recordAudio") ?? false
