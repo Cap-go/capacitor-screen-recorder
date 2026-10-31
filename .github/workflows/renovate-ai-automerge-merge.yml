@@ -30,10 +30,26 @@ jobs:
     steps:
       - name: Checkout trusted default-branch workflow content
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.1.0
+        with:
+          persist-credentials: false
+
+      # Merges only .github/workflows/* PRs; GITHUB_TOKEN cannot update workflow files.
+      # Repo needs: variable AUTOMERGE_APP_ID, secret AUTOMERGE_APP_PRIVATE_KEY (GitHub App with contents, pull_requests, workflows on this repo).
+      - name: Mint merge token
+        id: merge-token
+        uses: actions/create-github-app-token@29824e69f54612133e76f7eaac726eef6c875baf # v2.2.1
+        with:
+          app-id: ${{ vars.AUTOMERGE_APP_ID }}
+          private-key: ${{ secrets.AUTOMERGE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-workflows: write
+          permission-checks: read
+          permission-statuses: read
 
       - name: Re-validate gates and merge
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.merge-token.outputs.token }}
           PR_NUMBER: ${{ inputs.pr_number }}
           HEAD_SHA: ${{ inputs.head_sha }}
         run: |
