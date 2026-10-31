@@ -1,0 +1,83 @@
+name: Renovate AI automerge merge
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number to merge
+        required: true
+        type: string
+      head_sha:
+        description: Expected head commit SHA
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+  checks: read
+  statuses: read
+
+concurrency:
+  group: renovate-ai-automerge-merge-${{ inputs.pr_number }}
+  cancel-in-progress: false
+
+jobs:
+  merge:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout trusted default-branch workflow content
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.1.0
+        with:
+          persist-credentials: false
+
+      # Merges only .github/workflows/* PRs; GITHUB_TOKEN cannot update workflow files.
+      # Org/repo needs: variable AUTOMERGE_APP_ID, secret AUTOMERGE_APP_PRIVATE_KEY (GitHub App with contents, pull_requests, workflows on this repo).
+      - name: Check automerge app configuration
+        id: automerge-config
+        env:
+          AUTOMERGE_APP_ID: ${{ vars.AUTOMERGE_APP_ID }}
+          AUTOMERGE_APP_PRIVATE_KEY: ${{ secrets.AUTOMERGE_APP_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${AUTOMERGE_APP_ID}" || -z "${AUTOMERGE_APP_PRIVATE_KEY}" ]]; then
+            echo "configured=false" >> "${GITHUB_OUTPUT}"
+            echo "::notice::AUTOMERGE_APP_ID and/or AUTOMERGE_APP_PRIVATE_KEY not set; skipping automerge (see renovate.json)."
+            exit 0
+          fi
+          echo "configured=true" >> "${GITHUB_OUTPUT}"
+
+      - name: Mint merge token
+        if: steps.automerge-config.outputs.configured == 'true'
+        id: merge-token
+        uses: actions/create-github-app-token@29824e69f54612133e76f7eaac726eef6c875baf # v2.2.1
+        with:
+          app-id: ${{ vars.AUTOMERGE_APP_ID }}
+          private-key: ${{ secrets.AUTOMERGE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-workflows: write
+          permission-checks: read
+          permission-statuses: read
+
+      - name: Re-validate gates and merge
+        if: steps.automerge-config.outputs.configured == 'true'
+        env:
+          GH_TOKEN: ${{ steps.merge-token.outputs.token }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+          HEAD_SHA: ${{ inputs.head_sha }}
+        run: |
+          set -euo pipefail
+          set +e
+          bash .github/scripts/renovate-automerge-gates.sh merge \
+            "${PR_NUMBER}" \
+            "${HEAD_SHA}" \
+            "${GITHUB_REPOSITORY}"
+          gate_result=$?
+          set -e
+          if [[ "${gate_result}" -eq 2 ]]; then
+            exit 0
+          fi
+          exit "${gate_result}"
