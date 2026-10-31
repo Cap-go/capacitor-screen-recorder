@@ -18,9 +18,10 @@ permissions:
   statuses: read
   pull-requests: read
 
+# Do not cancel in-progress runs: GitHub marks cancelled jobs as failed on the PR.
 concurrency:
   group: renovate-ai-automerge-${{ github.event.pull_request.number || github.event.check_suite.pull_requests[0].number || github.event.workflow_run.pull_requests[0].number || github.run_id }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   validate:
@@ -80,6 +81,7 @@ jobs:
           PR_NUMBER: ${{ steps.pr.outputs.number }}
           HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
           GH_TOKEN: ${{ github.token }}
+          AUTOMERGE_APP_ID: ${{ vars.AUTOMERGE_APP_ID }}
         run: |
           set -euo pipefail
           set +e
@@ -94,6 +96,10 @@ jobs:
           fi
           if [[ "${gate_result}" -ne 0 ]]; then
             exit "${gate_result}"
+          fi
+          if [[ -z "${AUTOMERGE_APP_ID:-}" ]]; then
+            echo "::notice::Skipping merge dispatch: set repository variable AUTOMERGE_APP_ID and secret AUTOMERGE_APP_PRIVATE_KEY (see renovate.json packageRules description)."
+            exit 0
           fi
           gh workflow run renovate-ai-automerge-merge.yml \
             --repo "${GITHUB_REPOSITORY}" \

@@ -20,7 +20,7 @@ permissions:
 
 concurrency:
   group: renovate-ai-automerge-merge-${{ inputs.pr_number }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   merge:
@@ -34,8 +34,23 @@ jobs:
           persist-credentials: false
 
       # Merges only .github/workflows/* PRs; GITHUB_TOKEN cannot update workflow files.
-      # Repo needs: variable AUTOMERGE_APP_ID, secret AUTOMERGE_APP_PRIVATE_KEY (GitHub App with contents, pull_requests, workflows on this repo).
+      # Org/repo needs: variable AUTOMERGE_APP_ID, secret AUTOMERGE_APP_PRIVATE_KEY (GitHub App with contents, pull_requests, workflows on this repo).
+      - name: Check automerge app configuration
+        id: automerge-config
+        env:
+          AUTOMERGE_APP_ID: ${{ vars.AUTOMERGE_APP_ID }}
+          AUTOMERGE_APP_PRIVATE_KEY: ${{ secrets.AUTOMERGE_APP_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${AUTOMERGE_APP_ID}" || -z "${AUTOMERGE_APP_PRIVATE_KEY}" ]]; then
+            echo "configured=false" >> "${GITHUB_OUTPUT}"
+            echo "::notice::AUTOMERGE_APP_ID and/or AUTOMERGE_APP_PRIVATE_KEY not set; skipping automerge (see renovate.json)."
+            exit 0
+          fi
+          echo "configured=true" >> "${GITHUB_OUTPUT}"
+
       - name: Mint merge token
+        if: steps.automerge-config.outputs.configured == 'true'
         id: merge-token
         uses: actions/create-github-app-token@29824e69f54612133e76f7eaac726eef6c875baf # v2.2.1
         with:
@@ -48,6 +63,7 @@ jobs:
           permission-statuses: read
 
       - name: Re-validate gates and merge
+        if: steps.automerge-config.outputs.configured == 'true'
         env:
           GH_TOKEN: ${{ steps.merge-token.outputs.token }}
           PR_NUMBER: ${{ inputs.pr_number }}
