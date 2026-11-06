@@ -1,0 +1,95 @@
+name: Renovate AI automerge
+
+on:
+  pull_request_review:
+    types: [submitted]
+  check_suite:
+    types: [completed]
+  workflow_run:
+    workflows: ['Build source code and test it']
+    types: [completed]
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  checks: read
+  contents: read
+  statuses: read
+  pull-requests: read
+
+# Do not cancel in-progress runs: GitHub marks cancelled jobs as failed on the PR.
+concurrency:
+  group: renovate-ai-automerge-${{ github.event.pull_request.number || github.event.check_suite.pull_requests[0].number || github.event.workflow_run.pull_requests[0].number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout pull request validation content
+        uses: actions/checkout@v7
+
+      - name: Resolve pull request
+        id: pr
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            let pr = context.payload.pull_request;
+
+            if (!pr) {
+              const linked =
+                context.payload.check_suite?.pull_requests ||
+                context.payload.workflow_run?.pull_requests ||
+                [];
+              if (linked.length === 1) {
+                const { data } = await github.rest.pulls.get({
+                  owner,
+                  repo,
+                  pull_number: linked[0].number,
+                });
+                pr = data;
+              } else if (linked.length > 1) {
+                for (const candidate of linked) {
+                  const { data } = await github.rest.pulls.get({
+                    owner,
+                    repo,
+                    pull_number: candidate.number,
+                  });
+                  const author = data.user?.login ?? '';
+                  if (author === 'renovate[bot]' || author === 'app/renovate') {
+                    pr = data;
+                    break;
+                  }
+                }
+              }
+            }
+
+            if (!pr) {
+              core.notice('No pull request context for this event');
+              return;
+            }
+
+            core.setOutput('number', String(pr.number));
+            core.setOutput('head_sha', pr.head.sha);
+
+      - name: Evaluate gates (read-only; merge dispatches from default branch)
+        if: steps.pr.outcome == 'success' && steps.pr.outputs.number != ''
+        env:
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          set +e
+          bash .github/scripts/renovate-automerge-gates.sh evaluate \
+            "${PR_NUMBER}" \
+            "${HEAD_SHA}" \
+            "${GITHUB_REPOSITORY}"
+          gate_result=$?
+          set -e
+          if [[ "${gate_result}" -eq 2 ]]; then
+            exit 0
+          fi
+          exit "${gate_result}"
