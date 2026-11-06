@@ -20,7 +20,7 @@ if [[ "${MODE}" != "evaluate" && "${MODE}" != "merge" ]]; then
   fail "Invalid mode: ${MODE}"
 fi
 
-PR_JSON="$(gh pr view "${PR_NUMBER}" --repo "${REPO}" --json state,isDraft,author,mergedAt,labels,files)"
+PR_JSON="$(gh pr view "${PR_NUMBER}" --repo "${REPO}" --json state,isDraft,author,mergedAt,labels)"
 PR_STATE="$(jq -r '.state' <<<"${PR_JSON}")"
 PR_DRAFT="$(jq -r '.isDraft' <<<"${PR_JSON}")"
 PR_AUTHOR="$(jq -r '.author.login' <<<"${PR_JSON}")"
@@ -43,7 +43,23 @@ if [[ -n "${MERGED_AT}" && "${MERGED_AT}" != "null" ]]; then
   skip "PR #${PR_NUMBER} is already merged"
 fi
 
-mapfile -t CHANGED_FILES < <(jq -r '.files[].path' <<<"${PR_JSON}")
+CHANGED_FILES=()
+PAGE=1
+while true; do
+  PAGE_JSON="$(
+    gh api "repos/${REPO}/pulls/${PR_NUMBER}/files" -F per_page=100 -F page="${PAGE}" 2>/dev/null
+  )" || fail "Failed to list changed files for PR #${PR_NUMBER}"
+  mapfile -t PAGE_PATHS < <(jq -r '.[].path' <<<"${PAGE_JSON}")
+  if [[ ${#PAGE_PATHS[@]} -eq 0 ]]; then
+    break
+  fi
+  CHANGED_FILES+=("${PAGE_PATHS[@]}")
+  if [[ ${#PAGE_PATHS[@]} -lt 100 ]]; then
+    break
+  fi
+  PAGE=$((PAGE + 1))
+done
+
 if [[ ${#CHANGED_FILES[@]} -eq 0 ]]; then
   skip "PR #${PR_NUMBER} has no changed files"
 fi
@@ -91,19 +107,21 @@ check_matches_required() {
 
 load_check_runs() {
   local output_file="$1"
-  if ! gh api "repos/${REPO}/commits/${HEAD_SHA}/check-runs" --paginate \
+  local sha="$2"
+  if ! gh api "repos/${REPO}/commits/${sha}/check-runs" --paginate \
     --jq '.check_runs[] | [.id, .name, .status, (.conclusion // "")] | @tsv' >"${output_file}"; then
-    fail "Failed to fetch check runs for ${HEAD_SHA}"
+    fail "Failed to fetch check runs for ${sha}"
   fi
 }
 
-evaluate_required_checks() {
+evaluate_required_checks_for_sha() {
+  local target_sha="$1"
   local pending=false
   local failed=false
   local check_runs_file
   check_runs_file="$(mktemp)"
   trap 'rm -f "${check_runs_file}"' RETURN
-  load_check_runs "${check_runs_file}"
+  load_check_runs "${check_runs_file}" "${target_sha}"
 
   for required in "${REQUIRED_CHECKS[@]}"; do
     local found=false
@@ -151,26 +169,59 @@ evaluate_required_checks() {
   return 0
 }
 
-wait_for_required_checks() {
+wait_for_required_checks_on_sha() {
+  local target_sha="$1"
+  local label="$2"
   local start
   start="$(date +%s)"
   while true; do
     set +e
-    evaluate_required_checks
+    evaluate_required_checks_for_sha "${target_sha}"
     local result=$?
     set -e
     if [[ "${result}" -eq 0 ]]; then
-      log "All required checks passed on ${HEAD_SHA}"
+      log "All required checks passed on ${label} ${target_sha}"
       return 0
     fi
     if [[ "${result}" -eq 2 ]]; then
-      fail "Required checks failed for PR #${PR_NUMBER}"
+      fail "Required checks failed for PR #${PR_NUMBER} (${label} ${target_sha})"
     fi
     if (( $(date +%s) - start >= MAX_WAIT_SECONDS )); then
-      skip "Timed out after ${MAX_WAIT_SECONDS}s waiting for required checks on PR #${PR_NUMBER}"
+      skip "Timed out after ${MAX_WAIT_SECONDS}s waiting for required checks (${label}) on PR #${PR_NUMBER}"
     fi
-    log "Waiting for required checks on ${HEAD_SHA}..."
+    log "Waiting for required checks on ${label} ${target_sha}..."
     sleep "${POLL_SECONDS}"
+  done
+}
+
+wait_for_pr_merge_commit_checks() {
+  local start
+  start="$(date +%s)"
+  while true; do
+    PR_PULL_JSON="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '{mergeable, merge_commit_sha}')"
+    MERGEABLE="$(jq -r '.mergeable' <<<"${PR_PULL_JSON}")"
+    MERGE_SHA="$(jq -r '.merge_commit_sha // empty' <<<"${PR_PULL_JSON}")"
+
+    if [[ "${MERGEABLE}" == "false" ]]; then
+      skip "PR #${PR_NUMBER} is not mergeable (conflicts or blocked)"
+    fi
+
+    if [[ -z "${MERGE_SHA}" ]]; then
+      if (( $(date +%s) - start >= MAX_WAIT_SECONDS )); then
+        skip "Timed out after ${MAX_WAIT_SECONDS}s waiting for merge test commit on PR #${PR_NUMBER}"
+      fi
+      log "Waiting for GitHub to compute merge test commit for PR #${PR_NUMBER}..."
+      sleep "${POLL_SECONDS}"
+      continue
+    fi
+
+    if [[ "${MERGE_SHA}" == "${HEAD_SHA}" ]]; then
+      log "Merge test commit matches HEAD ${HEAD_SHA}; skipping duplicate check pass"
+      return 0
+    fi
+
+    wait_for_required_checks_on_sha "${MERGE_SHA}" "merge"
+    return 0
   done
 }
 
@@ -190,7 +241,9 @@ get_coderabbit_review_state() {
       | .state // ""'
 }
 
-wait_for_required_checks
+wait_for_required_checks_on_sha "${HEAD_SHA}" "head"
+
+wait_for_pr_merge_commit_checks
 
 CODERABBIT_STATE="$(get_coderabbit_review_state)"
 if [[ "${CODERABBIT_STATE}" == "CHANGES_REQUESTED" ]]; then

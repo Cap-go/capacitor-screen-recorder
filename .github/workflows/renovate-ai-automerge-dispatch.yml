@@ -1,0 +1,98 @@
+name: Renovate AI automerge dispatch
+
+on:
+  workflow_run:
+    workflows: ['Build source code and test it']
+    types: [completed]
+
+permissions:
+  actions: write
+  checks: read
+  contents: read
+  pull-requests: read
+  statuses: read
+
+concurrency:
+  group: renovate-ai-automerge-dispatch-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+jobs:
+  dispatch-merge:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout trusted default-branch workflow content
+        uses: actions/checkout@v7
+
+      - name: Resolve pull request from workflow run
+        id: pr
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const run = context.payload.workflow_run;
+            const linked = run.pull_requests || [];
+            let pr = null;
+
+            if (linked.length === 1) {
+              const { data } = await github.rest.pulls.get({
+                owner,
+                repo,
+                pull_number: linked[0].number,
+              });
+              pr = data;
+            } else if (linked.length > 1) {
+              for (const candidate of linked) {
+                const { data } = await github.rest.pulls.get({
+                  owner,
+                  repo,
+                  pull_number: candidate.number,
+                });
+                const author = data.user?.login ?? '';
+                if (author === 'renovate[bot]' || author === 'app/renovate') {
+                  pr = data;
+                  break;
+                }
+              }
+            }
+
+            if (!pr) {
+              core.notice('No pull request context for this workflow run');
+              return;
+            }
+
+            core.setOutput('number', String(pr.number));
+            core.setOutput('head_sha', pr.head.sha);
+
+      - name: Evaluate gates and trigger merge
+        if: steps.pr.outcome == 'success' && steps.pr.outputs.number != ''
+        env:
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+          GH_TOKEN: ${{ github.token }}
+          AUTOMERGE_APP_ID: ${{ vars.AUTOMERGE_APP_ID }}
+        run: |
+          set -euo pipefail
+          set +e
+          bash .github/scripts/renovate-automerge-gates.sh evaluate \
+            "${PR_NUMBER}" \
+            "${HEAD_SHA}" \
+            "${GITHUB_REPOSITORY}"
+          gate_result=$?
+          set -e
+          if [[ "${gate_result}" -eq 2 ]]; then
+            exit 0
+          fi
+          if [[ "${gate_result}" -ne 0 ]]; then
+            exit "${gate_result}"
+          fi
+          if [[ -z "${AUTOMERGE_APP_ID:-}" ]]; then
+            echo "::notice::Skipping merge dispatch: set repository variable AUTOMERGE_APP_ID and secret AUTOMERGE_APP_PRIVATE_KEY (see renovate.json packageRules description)."
+            exit 0
+          fi
+          gh workflow run renovate-ai-automerge-merge.yml \
+            --repo "${GITHUB_REPOSITORY}" \
+            --ref main \
+            -f "pr_number=${PR_NUMBER}" \
+            -f "head_sha=${HEAD_SHA}"

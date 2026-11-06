@@ -12,7 +12,6 @@ on:
     types: [opened, synchronize, reopened]
 
 permissions:
-  actions: write
   checks: read
   contents: read
   statuses: read
@@ -29,11 +28,11 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout pull request validation content
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.1.0
+        uses: actions/checkout@v7
 
       - name: Resolve pull request
         id: pr
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        uses: actions/github-script@v9
         with:
           script: |
             const { owner, repo } = context.repo;
@@ -75,13 +74,12 @@ jobs:
             core.setOutput('number', String(pr.number));
             core.setOutput('head_sha', pr.head.sha);
 
-      - name: Evaluate gates and trigger merge
+      - name: Evaluate gates (read-only; merge dispatches from default branch)
         if: steps.pr.outcome == 'success' && steps.pr.outputs.number != ''
         env:
           PR_NUMBER: ${{ steps.pr.outputs.number }}
           HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
           GH_TOKEN: ${{ github.token }}
-          AUTOMERGE_APP_ID: ${{ vars.AUTOMERGE_APP_ID }}
         run: |
           set -euo pipefail
           set +e
@@ -94,15 +92,4 @@ jobs:
           if [[ "${gate_result}" -eq 2 ]]; then
             exit 0
           fi
-          if [[ "${gate_result}" -ne 0 ]]; then
-            exit "${gate_result}"
-          fi
-          if [[ -z "${AUTOMERGE_APP_ID:-}" ]]; then
-            echo "::notice::Skipping merge dispatch: set repository variable AUTOMERGE_APP_ID and secret AUTOMERGE_APP_PRIVATE_KEY (see renovate.json packageRules description)."
-            exit 0
-          fi
-          gh workflow run renovate-ai-automerge-merge.yml \
-            --repo "${GITHUB_REPOSITORY}" \
-            --ref main \
-            -f "pr_number=${PR_NUMBER}" \
-            -f "head_sha=${HEAD_SHA}"
+          exit "${gate_result}"
