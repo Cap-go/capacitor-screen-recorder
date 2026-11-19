@@ -23,13 +23,11 @@ public class ScreenRecorderPlugin extends Plugin {
     @Override
     public void load() {
         captureDetector = new ScreenCaptureDetector(getContext());
-        captureDetector.start(
-            captured -> {
-                final JSObject data = new JSObject();
-                data.put("isCaptured", captured);
-                notifyListeners("captureStateChanged", data);
-            }
-        );
+        captureDetector.start((captured) -> {
+            final JSObject data = new JSObject();
+            data.put("isCaptured", captured);
+            notifyListeners("captureStateChanged", data);
+        });
         videoRecorder = CapgoScrCast.use(this.bridge.getActivity(), false);
         audioRecorder = CapgoScrCast.use(this.bridge.getActivity(), true);
         final Options options = new Options();

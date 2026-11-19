@@ -1,10 +1,6 @@
 import { WebPlugin } from '@capacitor/core';
 
-import type {
-  ScreenCaptureState,
-  ScreenRecorderPlugin,
-  StartRecordingOptions,
-} from './definitions';
+import type { ScreenCaptureState, ScreenRecorderPlugin, StartRecordingOptions } from './definitions';
 
 export class ScreenRecorderWeb extends WebPlugin implements ScreenRecorderPlugin {
   async start(_options?: StartRecordingOptions): Promise<void> {
