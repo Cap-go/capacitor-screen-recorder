@@ -11,6 +11,7 @@ IGNORE_CHECK_SUBSTR=("Socket" "SonarCloud" "smith" "cubic" "Renovate AI automerg
 CODERABBIT_LOGIN="coderabbitai[bot]"
 POLL_SECONDS=30
 MAX_WAIT_SECONDS=540
+DEADLINE=$(( $(date +%s) + MAX_WAIT_SECONDS ))
 
 log() { echo "::notice::$*"; }
 skip() { log "$1"; exit 2; }
@@ -47,9 +48,9 @@ CHANGED_FILES=()
 PAGE=1
 while true; do
   PAGE_JSON="$(
-    gh api "repos/${REPO}/pulls/${PR_NUMBER}/files" -F per_page=100 -F page="${PAGE}" 2>/dev/null
+    gh api "repos/${REPO}/pulls/${PR_NUMBER}/files" --method GET -F per_page=100 -F page="${PAGE}" 2>/dev/null
   )" || fail "Failed to list changed files for PR #${PR_NUMBER}"
-  mapfile -t PAGE_PATHS < <(jq -r '.[].path' <<<"${PAGE_JSON}")
+  mapfile -t PAGE_PATHS < <(jq -r '.[].filename' <<<"${PAGE_JSON}")
   if [[ ${#PAGE_PATHS[@]} -eq 0 ]]; then
     break
   fi
@@ -114,6 +115,34 @@ load_check_runs() {
   fi
 }
 
+# Returns how many required checks have at least one matching run on the SHA.
+count_required_checks_on_sha() {
+  local target_sha="$1"
+  local found_count=0
+  local check_runs_file
+  check_runs_file="$(mktemp)"
+  trap 'rm -f "${check_runs_file}"' RETURN
+  load_check_runs "${check_runs_file}" "${target_sha}"
+
+  for required in "${REQUIRED_CHECKS[@]}"; do
+    local found=false
+    while IFS=$'\t' read -r id name status conclusion; do
+      [[ -n "${id}" ]] || continue
+      if should_ignore_check "${name}"; then
+        continue
+      fi
+      if check_matches_required "${name}" "${required}"; then
+        found=true
+        break
+      fi
+    done <"${check_runs_file}"
+    if [[ "${found}" == "true" ]]; then
+      found_count=$((found_count + 1))
+    fi
+  done
+  echo "${found_count}"
+}
+
 evaluate_required_checks_for_sha() {
   local target_sha="$1"
   local pending=false
@@ -172,8 +201,6 @@ evaluate_required_checks_for_sha() {
 wait_for_required_checks_on_sha() {
   local target_sha="$1"
   local label="$2"
-  local start
-  start="$(date +%s)"
   while true; do
     set +e
     evaluate_required_checks_for_sha "${target_sha}"
@@ -186,7 +213,7 @@ wait_for_required_checks_on_sha() {
     if [[ "${result}" -eq 2 ]]; then
       fail "Required checks failed for PR #${PR_NUMBER} (${label} ${target_sha})"
     fi
-    if (( $(date +%s) - start >= MAX_WAIT_SECONDS )); then
+    if (( $(date +%s) >= DEADLINE )); then
       skip "Timed out after ${MAX_WAIT_SECONDS}s waiting for required checks (${label}) on PR #${PR_NUMBER}"
     fi
     log "Waiting for required checks on ${label} ${target_sha}..."
@@ -195,8 +222,6 @@ wait_for_required_checks_on_sha() {
 }
 
 wait_for_pr_merge_commit_checks() {
-  local start
-  start="$(date +%s)"
   while true; do
     PR_PULL_JSON="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '{mergeable, merge_commit_sha}')"
     MERGEABLE="$(jq -r '.mergeable' <<<"${PR_PULL_JSON}")"
@@ -207,7 +232,7 @@ wait_for_pr_merge_commit_checks() {
     fi
 
     if [[ -z "${MERGE_SHA}" ]]; then
-      if (( $(date +%s) - start >= MAX_WAIT_SECONDS )); then
+      if (( $(date +%s) >= DEADLINE )); then
         skip "Timed out after ${MAX_WAIT_SECONDS}s waiting for merge test commit on PR #${PR_NUMBER}"
       fi
       log "Waiting for GitHub to compute merge test commit for PR #${PR_NUMBER}..."
@@ -217,6 +242,12 @@ wait_for_pr_merge_commit_checks() {
 
     if [[ "${MERGE_SHA}" == "${HEAD_SHA}" ]]; then
       log "Merge test commit matches HEAD ${HEAD_SHA}; skipping duplicate check pass"
+      return 0
+    fi
+
+    merge_checks_found="$(count_required_checks_on_sha "${MERGE_SHA}")"
+    if [[ "${merge_checks_found}" -eq 0 ]]; then
+      log "No required checks on merge commit ${MERGE_SHA}; PR head ${HEAD_SHA} checks already validated"
       return 0
     fi
 

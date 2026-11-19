@@ -5,6 +5,20 @@
   ],
   "packageRules": [
     {
+      "description": "Cap-go plugins follow the official Capacitor Android toolchain; never bump Gradle wrapper, AGP, or Kotlin via Renovate",
+      "matchManagers": ["gradle-wrapper"],
+      "enabled": false
+    },
+    {
+      "matchPackageNames": [
+        "/^com\\.android\\.tools\\.build:gradle$/",
+        "/^com\\.android\\.(library|application)/",
+        "/^org\\.jetbrains\\.kotlin[:.]/"
+      ],
+      "matchManagers": ["gradle"],
+      "enabled": false
+    },
+    {
       "matchPackageNames": [
         "eslint"
       ],

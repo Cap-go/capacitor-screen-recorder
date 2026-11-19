@@ -29,6 +29,8 @@ jobs:
     steps:
       - name: Checkout pull request validation content
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Resolve pull request
         id: pr

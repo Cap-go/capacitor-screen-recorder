@@ -4,6 +4,8 @@ on:
   workflow_run:
     workflows: ['Build source code and test it']
     types: [completed]
+  schedule:
+    - cron: '*/15 * * * *'
 
 permissions:
   actions: write
@@ -13,17 +15,19 @@ permissions:
   statuses: read
 
 concurrency:
-  group: renovate-ai-automerge-dispatch-${{ github.event.workflow_run.id }}
+  group: renovate-ai-automerge-dispatch-${{ github.event_name }}-${{ github.event.workflow_run.id || github.run_id }}
   cancel-in-progress: false
 
 jobs:
   dispatch-merge:
-    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request'
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Checkout trusted default-branch workflow content
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Resolve pull request from workflow run
         id: pr
@@ -74,25 +78,37 @@ jobs:
           AUTOMERGE_APP_ID: ${{ vars.AUTOMERGE_APP_ID }}
         run: |
           set -euo pipefail
-          set +e
-          bash .github/scripts/renovate-automerge-gates.sh evaluate \
-            "${PR_NUMBER}" \
-            "${HEAD_SHA}" \
-            "${GITHUB_REPOSITORY}"
-          gate_result=$?
-          set -e
-          if [[ "${gate_result}" -eq 2 ]]; then
+          bash .github/scripts/renovate-automerge-dispatch-step.sh
+
+  scan-renovate-prs:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout trusted default-branch workflow content
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Scan eligible Renovate PRs and dispatch merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUTOMERGE_APP_ID: ${{ vars.AUTOMERGE_APP_ID }}
+        run: |
+          set -euo pipefail
+          mapfile -t PR_ROWS < <(
+            gh pr list --repo "${GITHUB_REPOSITORY}" --state open --label github-actions \
+              --json number,headRefOid,author \
+              --jq '.[] | select(.author.login == "renovate[bot]" or .author.login == "app/renovate") | [.number, .headRefOid] | @tsv'
+          )
+          if [[ ${#PR_ROWS[@]} -eq 0 ]]; then
+            echo "::notice::No open Renovate github-actions PRs to scan"
             exit 0
           fi
-          if [[ "${gate_result}" -ne 0 ]]; then
-            exit "${gate_result}"
-          fi
-          if [[ -z "${AUTOMERGE_APP_ID:-}" ]]; then
-            echo "::notice::Skipping merge dispatch: set repository variable AUTOMERGE_APP_ID and secret AUTOMERGE_APP_PRIVATE_KEY (see renovate.json packageRules description)."
-            exit 0
-          fi
-          gh workflow run renovate-ai-automerge-merge.yml \
-            --repo "${GITHUB_REPOSITORY}" \
-            --ref main \
-            -f "pr_number=${PR_NUMBER}" \
-            -f "head_sha=${HEAD_SHA}"
+          for row in "${PR_ROWS[@]}"; do
+            IFS=$'\t' read -r pr_number head_sha <<<"${row}"
+            PR_NUMBER="${pr_number}"
+            HEAD_SHA="${head_sha}"
+            export PR_NUMBER HEAD_SHA
+            bash .github/scripts/renovate-automerge-dispatch-step.sh || true
+          done
