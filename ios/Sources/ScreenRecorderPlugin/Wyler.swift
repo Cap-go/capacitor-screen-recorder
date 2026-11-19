@@ -70,6 +70,8 @@ public final class ScreenRecorder: NSObject, RPScreenRecorderDelegate {
     private let stateLock = NSLock()
     /// Fired when recording ends without `stoprecording()` being called.
     public var onExternalStop: ((URL?, Error?) -> Void)?
+    /// When true, the local file at stop is left on disk so the caller can read it from the returned URL.
+    public var preserveOutputFileForCaller = false
     let recorder = RPScreenRecorder.shared()
 
     public func startRecording(to outputURL: URL? = nil,
@@ -333,8 +335,10 @@ public final class ScreenRecorder: NSObject, RPScreenRecorderDelegate {
                                                                     didCreate: didCreate,
                                                                     handler: complete)
                     } else {
-                        self.deleteOutputFileIfNeeded(outputURL: outputURL, didCreate: didCreate)
                         complete(nil, outputURL)
+                        if !self.preserveOutputFileForCaller {
+                            self.deleteOutputFileIfNeeded(outputURL: outputURL, didCreate: didCreate)
+                        }
                     }
                 }
             } else if writer.status == .failed {
@@ -346,8 +350,10 @@ public final class ScreenRecorder: NSObject, RPScreenRecorderDelegate {
                                                                 didCreate: didCreate,
                                                                 handler: complete)
                 } else {
-                    self.deleteOutputFileIfNeeded(outputURL: outputURL, didCreate: didCreate)
                     complete(nil, outputURL)
+                    if !self.preserveOutputFileForCaller {
+                        self.deleteOutputFileIfNeeded(outputURL: outputURL, didCreate: didCreate)
+                    }
                 }
             }
         })
@@ -402,7 +408,9 @@ public final class ScreenRecorder: NSObject, RPScreenRecorderDelegate {
                 handler(error, nil)
             } else if success {
                 handler(nil, videoOutputURL)
-                self.deleteOutputFileIfNeeded(outputURL: videoOutputURL, didCreate: didCreate)
+                if !self.preserveOutputFileForCaller {
+                    self.deleteOutputFileIfNeeded(outputURL: videoOutputURL, didCreate: didCreate)
+                }
             } else {
                 self.deleteOutputFileIfNeeded(outputURL: videoOutputURL, didCreate: didCreate)
                 handler(NSError(domain: "ScreenRecorder",

@@ -110,12 +110,15 @@ class CapgoScrCast private constructor(
                     }
                     val savedPath = cleanupSession(deleteEmptyOutput = startPending || error != null)
                     val pendingStop = stopListener
-                    if (pendingStop != null && stopRequested && sessionActive && !startPending) {
+                    if (pendingStop != null && stopRequested) {
                         stopListener = null
-                        if (error != null) {
-                            pendingStop.onFailed(error)
-                        } else {
-                            pendingStop.onStopped(savedPath)
+                        when {
+                            error != null -> pendingStop.onFailed(error)
+                            startPending ->
+                                pendingStop.onFailed(
+                                    IllegalStateException("Recording stopped before it started"),
+                                )
+                            else -> pendingStop.onStopped(savedPath)
                         }
                     } else if (!startPending && sessionActive && !stopRequested) {
                         externalStopListener?.onExternalStop(savedPath, error?.message)
@@ -202,6 +205,14 @@ class CapgoScrCast private constructor(
     }
 
     fun stopRecording(listener: StopListener? = null) {
+        if (listener != null && stopListener != null) {
+            listener.onFailed(IllegalStateException("Stop already in progress"))
+            return
+        }
+        if (listener != null && stopRequested) {
+            listener.onFailed(IllegalStateException("Stop already in progress"))
+            return
+        }
         stopListener = listener
         stopRequested = true
         if (recordingSession == null && startListener != null) {
