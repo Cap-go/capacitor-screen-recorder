@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# Renovate GitHub Actions automerge gates: scope, CI, and CodeRabbit approval.
+#
+# Usage: renovate-automerge-gates.sh <evaluate|merge> <pr_number> <head_sha> <repo>
+# Exit 0 on success, 2 on eligible skip, 1 on error.
 set -euo pipefail
 
 MODE="${1:?usage: renovate-automerge-gates.sh <evaluate|merge> <pr_number> <head_sha> <repo>}"
@@ -13,8 +17,19 @@ POLL_SECONDS=30
 MAX_WAIT_SECONDS=540
 DEADLINE=$(( $(date +%s) + MAX_WAIT_SECONDS ))
 
+# Emit a GitHub Actions notice.
+# Arguments:
+#   $* - Notice message.
 log() { echo "::notice::$*"; }
+
+# Log a notice and exit with code 2 (eligible skip).
+# Arguments:
+#   $1 - Skip reason.
 skip() { log "$1"; exit 2; }
+
+# Emit a GitHub Actions error and exit with code 1.
+# Arguments:
+#   $1 - Error message.
 fail() { echo "::error::$1"; exit 1; }
 
 if [[ "${MODE}" != "evaluate" && "${MODE}" != "merge" ]]; then
@@ -88,6 +103,11 @@ if [[ "${ACTUAL_HEAD_SHA}" != "${HEAD_SHA}" ]]; then
   skip "PR #${PR_NUMBER} head moved (${HEAD_SHA} -> ${ACTUAL_HEAD_SHA})"
 fi
 
+# Return whether a check run name matches an ignored substring.
+# Arguments:
+#   $1 - Check run name.
+# Returns:
+#   0 when ignored, 1 otherwise.
 should_ignore_check() {
   local name="$1"
   for pattern in "${IGNORE_CHECK_SUBSTR[@]}"; do
@@ -98,6 +118,12 @@ should_ignore_check() {
   return 1
 }
 
+# Return whether a check run name satisfies a required job name.
+# Arguments:
+#   $1 - Check run name.
+#   $2 - Required job name from REQUIRED_CHECKS.
+# Returns:
+#   0 when matched, 1 otherwise.
 check_matches_required() {
   local check_name="$1"
   local required="$2"
@@ -106,6 +132,10 @@ check_matches_required() {
   return 1
 }
 
+# Download paginated check runs for a commit into a TSV file.
+# Arguments:
+#   $1 - Output file path.
+#   $2 - Commit SHA.
 load_check_runs() {
   local output_file="$1"
   local sha="$2"
@@ -115,7 +145,11 @@ load_check_runs() {
   fi
 }
 
-# Returns how many required checks have at least one matching run on the SHA.
+# Count how many required checks have at least one matching run on a SHA.
+# Arguments:
+#   $1 - Commit SHA.
+# Outputs:
+#   Count to stdout.
 count_required_checks_on_sha() {
   local target_sha="$1"
   local found_count=0
@@ -143,6 +177,11 @@ count_required_checks_on_sha() {
   echo "${found_count}"
 }
 
+# Evaluate required CI checks for a commit.
+# Arguments:
+#   $1 - Commit SHA.
+# Returns:
+#   0 when all required checks succeeded, 1 when pending, 2 when failed.
 evaluate_required_checks_for_sha() {
   local target_sha="$1"
   local pending=false
@@ -198,6 +237,10 @@ evaluate_required_checks_for_sha() {
   return 0
 }
 
+# Poll until required checks pass or the shared DEADLINE is reached.
+# Arguments:
+#   $1 - Commit SHA.
+#   $2 - Label for log messages (head or merge).
 wait_for_required_checks_on_sha() {
   local target_sha="$1"
   local label="$2"
@@ -221,6 +264,7 @@ wait_for_required_checks_on_sha() {
   done
 }
 
+# Wait for merge-test commit checks, falling back to head when none are posted.
 wait_for_pr_merge_commit_checks() {
   while true; do
     PR_PULL_JSON="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '{mergeable, merge_commit_sha}')"
@@ -256,6 +300,9 @@ wait_for_pr_merge_commit_checks() {
   done
 }
 
+# Return the latest non-pending CodeRabbit review state for HEAD_SHA.
+# Outputs:
+#   Review state (APPROVED, CHANGES_REQUESTED, or empty) to stdout.
 get_coderabbit_review_state() {
   gh api "repos/${REPO}/pulls/${PR_NUMBER}/reviews" --paginate \
     | jq -r -s --arg sha "${HEAD_SHA}" --arg bot "${CODERABBIT_LOGIN}" '

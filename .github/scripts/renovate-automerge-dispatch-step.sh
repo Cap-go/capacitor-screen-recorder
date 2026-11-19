@@ -1,4 +1,11 @@
 #!/usr/bin/env bash
+# Evaluate Renovate automerge gates and dispatch the trusted merge workflow on main.
+#
+# Environment:
+#   PR_NUMBER - Pull request number.
+#   HEAD_SHA - Expected head commit SHA.
+#   GITHUB_REPOSITORY - owner/repo for gh calls.
+#   AUTOMERGE_APP_ID - When unset, merge dispatch is skipped.
 set -euo pipefail
 
 PR_NUMBER="${PR_NUMBER:?}"
