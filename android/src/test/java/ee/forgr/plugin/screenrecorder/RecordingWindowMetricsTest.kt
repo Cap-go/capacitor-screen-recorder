@@ -15,8 +15,9 @@ class RecordingWindowMetricsTest {
     @Test
     fun applyTo_resolvesAutoDimensionsFromPortraitWindowBounds() {
         val resolved = VideoSizeResolver.applyTo(autoSizeOptions(), 720, 1280)
-        assertEquals(720, resolved.video.width)
-        assertEquals(1280, resolved.video.height)
+        // Clamped to 1080p cap while keeping portrait aspect.
+        assertEquals(606, resolved.video.width)
+        assertEquals(1080, resolved.video.height)
     }
 
     @Test
