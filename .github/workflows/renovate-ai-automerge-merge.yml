@@ -1,0 +1,69 @@
+name: Renovate AI automerge merge
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number to merge
+        required: true
+        type: string
+      head_sha:
+        description: Expected head commit SHA
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+  checks: read
+  statuses: read
+
+concurrency:
+  group: renovate-ai-automerge-merge-${{ inputs.pr_number }}
+  cancel-in-progress: false
+
+jobs:
+  merge:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout trusted default-branch workflow content
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # Merges only .github/workflows/* PRs; GITHUB_TOKEN cannot update workflow files.
+      # Uses existing secrets.PERSONAL_ACCESS_TOKEN (workflow scope) like bump_version.yml.
+      - name: Check merge token configuration
+        id: automerge-config
+        env:
+          PERSONAL_ACCESS_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${PERSONAL_ACCESS_TOKEN}" ]]; then
+            echo "configured=false" >> "${GITHUB_OUTPUT}"
+            echo "::notice::PERSONAL_ACCESS_TOKEN not set; skipping automerge."
+            exit 0
+          fi
+          echo "configured=true" >> "${GITHUB_OUTPUT}"
+
+      - name: Re-validate gates and merge
+        if: steps.automerge-config.outputs.configured == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+          HEAD_SHA: ${{ inputs.head_sha }}
+        run: |
+          set -euo pipefail
+          set +e
+          bash .github/scripts/renovate-automerge-gates.sh merge \
+            "${PR_NUMBER}" \
+            "${HEAD_SHA}" \
+            "${GITHUB_REPOSITORY}"
+          gate_result=$?
+          set -e
+          if [[ "${gate_result}" -eq 2 ]]; then
+            exit 0
+          fi
+          exit "${gate_result}"

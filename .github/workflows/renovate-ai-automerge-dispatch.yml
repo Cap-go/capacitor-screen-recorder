@@ -1,0 +1,112 @@
+name: Renovate AI automerge dispatch
+
+on:
+  workflow_run:
+    workflows: ['Build source code and test it']
+    types: [completed]
+  schedule:
+    - cron: '*/15 * * * *'
+
+permissions:
+  actions: write
+  checks: read
+  contents: read
+  pull-requests: read
+  statuses: read
+
+concurrency:
+  group: renovate-ai-automerge-dispatch-${{ github.event_name }}-${{ github.event.workflow_run.id || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  dispatch-merge:
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout trusted default-branch workflow content
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Resolve pull request from workflow run
+        id: pr
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const run = context.payload.workflow_run;
+            const linked = run.pull_requests || [];
+            let pr = null;
+
+            if (linked.length === 1) {
+              const { data } = await github.rest.pulls.get({
+                owner,
+                repo,
+                pull_number: linked[0].number,
+              });
+              pr = data;
+            } else if (linked.length > 1) {
+              for (const candidate of linked) {
+                const { data } = await github.rest.pulls.get({
+                  owner,
+                  repo,
+                  pull_number: candidate.number,
+                });
+                const author = data.user?.login ?? '';
+                if (author === 'renovate[bot]' || author === 'app/renovate') {
+                  pr = data;
+                  break;
+                }
+              }
+            }
+
+            if (!pr) {
+              core.notice('No pull request context for this workflow run');
+              return;
+            }
+
+            core.setOutput('number', String(pr.number));
+            core.setOutput('head_sha', pr.head.sha);
+
+      - name: Evaluate gates and trigger merge
+        if: steps.pr.outcome == 'success' && steps.pr.outputs.number != ''
+        env:
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          bash .github/scripts/renovate-automerge-dispatch-step.sh
+
+  scan-renovate-prs:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout trusted default-branch workflow content
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Scan eligible Renovate PRs and dispatch merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mapfile -t PR_ROWS < <(
+            gh pr list --repo "${GITHUB_REPOSITORY}" --state open --label github-actions-major \
+              --json number,headRefOid,author \
+              --jq '.[] | select(.author.login == "renovate[bot]" or .author.login == "app/renovate") | [.number, .headRefOid] | @tsv'
+          )
+          if [[ ${#PR_ROWS[@]} -eq 0 ]]; then
+            echo "::notice::No open Renovate github-actions-major PRs to scan"
+            exit 0
+          fi
+          for row in "${PR_ROWS[@]}"; do
+            IFS=$'\t' read -r pr_number head_sha <<<"${row}"
+            PR_NUMBER="${pr_number}"
+            HEAD_SHA="${head_sha}"
+            export PR_NUMBER HEAD_SHA
+            bash .github/scripts/renovate-automerge-dispatch-step.sh || true
+          done
