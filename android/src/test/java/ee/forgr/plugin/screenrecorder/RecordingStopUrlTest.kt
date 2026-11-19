@@ -14,7 +14,6 @@ class RecordingStopUrlTest {
     @Test
     fun fromAbsolutePath_returnsFileUriForPath() {
         val url = RecordingStopUrl.fromAbsolutePath("/data/local/tmp/record.mp4")
-        assertEquals(true, url.startsWith("file://"))
-        assertEquals(true, url.contains("record.mp4"))
+        assertEquals("file:///data/local/tmp/record.mp4", url)
     }
 }

@@ -1,6 +1,5 @@
 package ee.forgr.plugin.screenrecorder
 
-import android.net.Uri
 import java.io.File
 
 object RecordingStopUrl {
@@ -9,6 +8,6 @@ object RecordingStopUrl {
         if (absolutePath.isNullOrBlank()) {
             return ""
         }
-        return Uri.fromFile(File(absolutePath)).toString()
+        return File(absolutePath).toURI().toString()
     }
 }
