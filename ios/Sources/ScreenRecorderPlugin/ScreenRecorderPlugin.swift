@@ -13,9 +13,11 @@ public class ScreenRecorderPlugin: CAPPlugin, CAPBridgedPlugin {
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "start", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "stop", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getCaptureState", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getPluginVersion", returnType: CAPPluginReturnPromise)
     ]
     private let implementation = ScreenRecorder()
+    private let captureMonitor = ScreenCaptureMonitor()
 
     override public func load() {
         implementation.onExternalStop = { [weak self] url, error in
@@ -26,6 +28,14 @@ public class ScreenRecorderPlugin: CAPPlugin, CAPBridgedPlugin {
             }
             self.notifyListeners("onStopped", data: data)
         }
+        captureMonitor.onStateChanged = { [weak self] isCaptured in
+            self?.notifyListeners("captureStateChanged", data: ["isCaptured": isCaptured])
+        }
+        captureMonitor.start()
+    }
+
+    deinit {
+        captureMonitor.stop()
     }
 
     @objc func start(_ call: CAPPluginCall) {
@@ -50,6 +60,10 @@ public class ScreenRecorderPlugin: CAPPlugin, CAPBridgedPlugin {
                 call.resolve()
             }
         })
+    }
+
+    @objc func getCaptureState(_ call: CAPPluginCall) {
+        call.resolve(["isCaptured": captureMonitor.isCaptured])
     }
 
     @objc func getPluginVersion(_ call: CAPPluginCall) {
