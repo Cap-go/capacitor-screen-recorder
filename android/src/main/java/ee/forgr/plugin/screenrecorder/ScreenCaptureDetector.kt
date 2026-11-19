@@ -64,7 +64,12 @@ class ScreenCaptureDetector(context: Context) {
                 Executor::class.java,
                 callbackClass,
             )
-            addMethod.invoke(windowManager, executor, callback)
+            val initialState = addMethod.invoke(windowManager, executor, callback)
+            if (initialState is Int) {
+                val captured = initialState == recordingStateRecording
+                isCaptured = captured
+                onCapturedChanged(captured)
+            }
             registeredCallback = callback
             callbackRegistered = true
         }.onFailure {
@@ -73,7 +78,7 @@ class ScreenCaptureDetector(context: Context) {
         }
     }
 
-  private fun unregisterCallbackReflection() {
+    private fun unregisterCallbackReflection() {
         val callback = registeredCallback ?: return
         runCatching {
             val windowManager = appContext.getSystemService(WindowManager::class.java)
