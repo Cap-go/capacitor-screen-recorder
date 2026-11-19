@@ -11,10 +11,17 @@ import org.mockito.Mockito.verify
 
 class VideoSizeResolverTest {
     @Test
-    fun applyTo_preservesLandscapeDisplaySize() {
-        val base = dev.bmcreations.scrcast.config.Options()
-        val options = base.copy(video = base.video.copy(width = -1, height = -1))
-        val resolved = VideoSizeResolver.applyTo(options, 1920, 1080)
+    fun applyTo_preservesLandscapeDisplaySizeWithin1080pCap() {
+        val options = dev.bmcreations.scrcast.config.Options()
+        val resolved = VideoSizeResolver.applyTo(options, 1280, 720)
+        assertEquals(1280, resolved.video.width)
+        assertEquals(720, resolved.video.height)
+    }
+
+    @Test
+    fun applyTo_scalesOversizedDisplayDownTo1080p() {
+        val options = dev.bmcreations.scrcast.config.Options()
+        val resolved = VideoSizeResolver.applyTo(options, 2560, 1440)
         assertEquals(1920, resolved.video.width)
         assertEquals(1080, resolved.video.height)
     }
