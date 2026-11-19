@@ -13,9 +13,18 @@ class RecordingWindowMetricsTest {
     }
 
     @Test
-    fun applyToWithWindowBounds_keepsLandscapeMetricsUnswapped() {
-        val resolved = VideoSizeResolver.applyTo(autoSizeOptions(), 1280, 720)
-        assertEquals(1280, resolved.video.width)
-        assertEquals(720, resolved.video.height)
+    fun applyTo_resolvesAutoDimensionsFromPortraitWindowBounds() {
+        val resolved = VideoSizeResolver.applyTo(autoSizeOptions(), 720, 1280)
+        assertEquals(720, resolved.video.width)
+        assertEquals(1280, resolved.video.height)
+    }
+
+    @Test
+    fun applyTo_preservesExplicitVideoSizeRegardlessOfWindowBounds() {
+        val base = autoSizeOptions()
+        val options = base.copy(video = base.video.copy(width = 640, height = 480))
+        val resolved = VideoSizeResolver.applyTo(options, 1920, 1080)
+        assertEquals(640, resolved.video.width)
+        assertEquals(480, resolved.video.height)
     }
 }
