@@ -39,6 +39,7 @@ class CapgoScrCast private constructor(
     private var outputFile: File? = null
     private var startListener: StartListener? = null
     private var stopRequested = false
+    private var stopListener: StopListener? = null
     private var sessionGeneration = 0L
 
     /**
@@ -108,7 +109,15 @@ class CapgoScrCast private constructor(
                         )
                     }
                     val savedPath = cleanupSession(deleteEmptyOutput = startPending || error != null)
-                    if (!startPending && sessionActive && !stopRequested) {
+                    val pendingStop = stopListener
+                    if (pendingStop != null && stopRequested && sessionActive && !startPending) {
+                        stopListener = null
+                        if (error != null) {
+                            pendingStop.onFailed(error)
+                        } else {
+                            pendingStop.onStopped(savedPath)
+                        }
+                    } else if (!startPending && sessionActive && !stopRequested) {
                         externalStopListener?.onExternalStop(savedPath, error?.message)
                     }
                     stopRequested = false
@@ -192,10 +201,19 @@ class CapgoScrCast private constructor(
         CapgoRecordingCoordinator.release()
     }
 
-    fun stopRecording() {
+    fun stopRecording(listener: StopListener? = null) {
+        stopListener = listener
         stopRequested = true
         if (recordingSession == null && startListener != null) {
             abandonCanceledPendingStart()
+            listener?.onFailed(IllegalStateException("Recording stopped before it started"))
+            stopListener = null
+            return
+        }
+        if (recordingSession == null) {
+            listener?.onStopped(null)
+            stopListener = null
+            stopRequested = false
             return
         }
         broadcaster.sendBroadcast(Intent(Action.Stop.name))
@@ -310,6 +328,11 @@ class CapgoScrCast private constructor(
 
     interface StartListener {
         fun onStarted()
+        fun onFailed(error: Throwable)
+    }
+
+    interface StopListener {
+        fun onStopped(path: String?)
         fun onFailed(error: Throwable)
     }
 

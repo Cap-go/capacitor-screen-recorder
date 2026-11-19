@@ -42,12 +42,14 @@ public class ScreenRecorderPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func stop(_ call: CAPPluginCall) {
-        implementation.stoprecording(handler: { error in
+        implementation.stoprecording(handler: { error, outputURL in
             if let error = error {
                 debugPrint("Error when stop recording \(error)")
                 call.reject("Cannot stop recording")
             } else {
-                call.resolve()
+                call.resolve([
+                    "url": outputURL?.absoluteString ?? "",
+                ])
             }
         })
     }

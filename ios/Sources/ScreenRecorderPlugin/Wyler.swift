@@ -278,9 +278,9 @@ public final class ScreenRecorder: NSObject, RPScreenRecorderDelegate {
         }
     }
 
-    public func stoprecording(handler: @escaping (Error?) -> Void) {
+    public func stoprecording(handler: @escaping (Error?, URL?) -> Void) {
         if isFinalizingExternally || !isRecording {
-            handler(nil)
+            handler(nil, nil)
             return
         }
         stopRequested = true
@@ -289,9 +289,9 @@ public final class ScreenRecorder: NSObject, RPScreenRecorderDelegate {
             let outputURL = self.videoOutputURL
             let didCreate = self.didCreateOutputFile
             let shouldSaveToCameraRoll = self.saveToCameraRoll
-            let complete: (Error?) -> Void = { stopError in
+            let complete: (Error?, URL?) -> Void = { stopError, output in
                 self.isRecording = false
-                handler(stopError)
+                handler(stopError, output)
             }
 
             if let error = error {
@@ -301,7 +301,7 @@ public final class ScreenRecorder: NSObject, RPScreenRecorderDelegate {
                     self.videoWriter?.cancelWriting()
                 }
                 self.deleteOutputFileIfNeeded(outputURL: outputURL, didCreate: didCreate)
-                complete(error)
+                complete(error, nil)
                 return
             }
 
@@ -317,7 +317,7 @@ public final class ScreenRecorder: NSObject, RPScreenRecorderDelegate {
             self.audioWriterInput?.markAsFinished()
 
             guard let writer = self.videoWriter else {
-                complete(nil)
+                complete(nil, outputURL)
                 return
             }
 
@@ -325,7 +325,7 @@ public final class ScreenRecorder: NSObject, RPScreenRecorderDelegate {
                 writer.finishWriting {
                     if let finishError = writer.error {
                         self.deleteOutputFileIfNeeded(outputURL: outputURL, didCreate: didCreate)
-                        complete(finishError)
+                        complete(finishError, nil)
                         return
                     }
                     if shouldSaveToCameraRoll {
@@ -334,12 +334,12 @@ public final class ScreenRecorder: NSObject, RPScreenRecorderDelegate {
                                                                     handler: complete)
                     } else {
                         self.deleteOutputFileIfNeeded(outputURL: outputURL, didCreate: didCreate)
-                        complete(nil)
+                        complete(nil, outputURL)
                     }
                 }
             } else if writer.status == .failed {
                 self.deleteOutputFileIfNeeded(outputURL: outputURL, didCreate: didCreate)
-                complete(writer.error)
+                complete(writer.error, nil)
             } else {
                 if shouldSaveToCameraRoll {
                     self.saveVideoToCameraRollAfterAuthorized(outputURL: outputURL,
@@ -347,7 +347,7 @@ public final class ScreenRecorder: NSObject, RPScreenRecorderDelegate {
                                                                 handler: complete)
                 } else {
                     self.deleteOutputFileIfNeeded(outputURL: outputURL, didCreate: didCreate)
-                    complete(nil)
+                    complete(nil, outputURL)
                 }
             }
         })
@@ -364,7 +364,7 @@ public final class ScreenRecorder: NSObject, RPScreenRecorderDelegate {
 
     private func saveVideoToCameraRollAfterAuthorized(outputURL: URL? = nil,
                                                       didCreate: Bool? = nil,
-                                                      handler: @escaping (Error?) -> Void) {
+                                                      handler: @escaping (Error?, URL?) -> Void) {
         let capturedOutputURL = outputURL ?? self.videoOutputURL
         let capturedDidCreate = didCreate ?? self.didCreateOutputFile
         let status = PHPhotoLibrary.authorizationStatus(for: .addOnly)
@@ -381,7 +381,7 @@ public final class ScreenRecorder: NSObject, RPScreenRecorderDelegate {
                                                handler: handler)
                 } else {
                     self.deleteOutputFileIfNeeded(outputURL: capturedOutputURL, didCreate: capturedDidCreate)
-                    handler(ScreenRecorderError.photoLibraryAccessNotGranted)
+                    handler(ScreenRecorderError.photoLibraryAccessNotGranted, nil)
                 }
             })
         }
@@ -389,9 +389,9 @@ public final class ScreenRecorder: NSObject, RPScreenRecorderDelegate {
 
     private func saveVideoToCameraRoll(outputURL: URL?,
                                        didCreate: Bool,
-                                       handler: @escaping (Error?) -> Void) {
+                                       handler: @escaping (Error?, URL?) -> Void) {
         guard let videoOutputURL = outputURL else {
-            return handler(nil)
+            return handler(nil, nil)
         }
 
         PHPhotoLibrary.shared().performChanges({
@@ -399,15 +399,16 @@ public final class ScreenRecorder: NSObject, RPScreenRecorderDelegate {
         }, completionHandler: { success, error in
             if let error = error {
                 self.deleteOutputFileIfNeeded(outputURL: videoOutputURL, didCreate: didCreate)
-                handler(error)
+                handler(error, nil)
             } else if success {
+                handler(nil, videoOutputURL)
                 self.deleteOutputFileIfNeeded(outputURL: videoOutputURL, didCreate: didCreate)
-                handler(nil)
             } else {
                 self.deleteOutputFileIfNeeded(outputURL: videoOutputURL, didCreate: didCreate)
                 handler(NSError(domain: "ScreenRecorder",
                                 code: -1,
-                                userInfo: [NSLocalizedDescriptionKey: "Failed to save video to photo library"]))
+                                userInfo: [NSLocalizedDescriptionKey: "Failed to save video to photo library"]),
+                        nil)
             }
         })
     }
