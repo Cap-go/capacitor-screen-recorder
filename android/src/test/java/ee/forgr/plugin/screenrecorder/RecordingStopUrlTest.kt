@@ -1,5 +1,6 @@
 package ee.forgr.plugin.screenrecorder
 
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -13,7 +14,8 @@ class RecordingStopUrlTest {
 
     @Test
     fun fromAbsolutePath_returnsFileUriForPath() {
-        val url = RecordingStopUrl.fromAbsolutePath("/data/local/tmp/record.mp4")
-        assertEquals("file:///data/local/tmp/record.mp4", url)
+        val path = "/data/local/tmp/record.mp4"
+        val url = RecordingStopUrl.fromAbsolutePath(path)
+        assertEquals(File(path).toURI().toString(), url)
     }
 }
