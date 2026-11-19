@@ -42,9 +42,7 @@ android {
         abortOnError = false
     }
     testOptions {
-        unitTests.all {
-            it.returnDefaultValues = true
-        }
+        unitTests.returnDefaultValues = true
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_21
