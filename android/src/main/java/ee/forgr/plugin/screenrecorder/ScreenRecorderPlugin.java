@@ -140,8 +140,7 @@ public class ScreenRecorderPlugin extends Plugin {
                         if (pendingRecorder == targetRecorder) {
                             pendingRecorder = null;
                         }
-                        final Exception exception =
-                            error instanceof Exception ? (Exception) error : new Exception(error);
+                        final Exception exception = error instanceof Exception ? (Exception) error : new Exception(error);
                         call.reject("Could not stop screen recording", exception);
                         call.release(bridge);
                     }
