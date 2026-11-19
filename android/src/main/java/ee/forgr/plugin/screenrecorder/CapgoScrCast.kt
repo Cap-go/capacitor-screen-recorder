@@ -248,7 +248,11 @@ class CapgoScrCast private constructor(
             )
             receiverRegistered = true
             activity.bindService(session, connection, Context.BIND_AUTO_CREATE)
-            activity.startService(session)
+            if (RecordingServiceStartPolicy.shouldUseStartForegroundService()) {
+                ContextCompat.startForegroundService(activity, session)
+            } else {
+                activity.startService(session)
+            }
         } catch (error: Exception) {
             Log.e("CapgoScreenRecorder", "Failed to start screen recording service", error)
             rollbackFailedStart(error)
