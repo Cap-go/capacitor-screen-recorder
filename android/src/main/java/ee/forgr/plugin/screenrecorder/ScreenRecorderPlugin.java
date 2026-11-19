@@ -23,7 +23,7 @@ public class ScreenRecorderPlugin extends Plugin {
     @Override
     public void load() {
         captureDetector = new ScreenCaptureDetector(getContext());
-        captureDetector.start(captured -> {
+        captureDetector.start((captured) -> {
             final JSObject data = new JSObject();
             data.put("isCaptured", captured);
             notifyListeners("captureStateChanged", data);
