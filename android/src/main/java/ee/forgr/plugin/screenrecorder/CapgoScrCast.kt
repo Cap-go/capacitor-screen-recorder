@@ -149,15 +149,13 @@ class CapgoScrCast private constructor(
     }
 
     fun updateOptions(options: Options) {
-        this.options = resolveVideoSize(options)
+        this.options = options
     }
 
     fun updateVideoFormat(format: String?) {
         val resolved = VideoFormatResolver.resolve(format)
         fileExtension = resolved.extension
-        options = resolveVideoSize(
-            options.copy(storage = options.storage.copy(outputFormat = resolved.outputFormat)),
-        )
+        options = options.copy(storage = options.storage.copy(outputFormat = resolved.outputFormat))
     }
 
     fun record(listener: StartListener): Boolean {
@@ -233,7 +231,8 @@ class CapgoScrCast private constructor(
         sessionGeneration += 1
         outputFile = file
         val displayRotation = activity.windowManager.defaultDisplay.rotation
-        val sessionOptions = resolveVideoSize(options, displayRotation)
+        val (windowWidth, windowHeight) = RecordingWindowMetrics.currentSize(activity)
+        val sessionOptions = VideoSizeResolver.applyTo(options, windowWidth, windowHeight)
         val session = Intent(activity, CapgoRecorderService::class.java).apply {
             putExtra("code", result.resultCode)
             putExtra("data", result.data)

@@ -11,24 +11,11 @@ import org.mockito.Mockito.verify
 
 class VideoSizeResolverTest {
     @Test
-    fun alignDimensionsToRotation_swapsWhenLandscapeRotationWithPortraitMetrics() {
-        val (width, height) = VideoSizeResolver.alignDimensionsToRotation(1080, 1920, 1)
-        assertEquals(1920, width)
-        assertEquals(1080, height)
-    }
-
-    @Test
-    fun alignDimensionsToRotation_swapsWhenPortraitRotationWithLandscapeMetrics() {
-        val (width, height) = VideoSizeResolver.alignDimensionsToRotation(1920, 1080, 0)
-        assertEquals(1080, width)
-        assertEquals(1920, height)
-    }
-
-    @Test
-    fun alignDimensionsToRotation_keepsWhenAlreadyAligned() {
-        val (width, height) = VideoSizeResolver.alignDimensionsToRotation(1920, 1080, 1)
-        assertEquals(1920, width)
-        assertEquals(1080, height)
+    fun applyTo_preservesLandscapeDisplaySize() {
+        val options = dev.bmcreations.scrcast.config.Options()
+        val resolved = VideoSizeResolver.applyTo(options, 1920, 1080)
+        assertEquals(1920, resolved.video.width)
+        assertEquals(1080, resolved.video.height)
     }
 
     @Test
