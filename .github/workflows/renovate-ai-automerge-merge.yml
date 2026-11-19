@@ -34,38 +34,24 @@ jobs:
           persist-credentials: false
 
       # Merges only .github/workflows/* PRs; GITHUB_TOKEN cannot update workflow files.
-      # Org/repo needs: variable AUTOMERGE_APP_ID, secret AUTOMERGE_APP_PRIVATE_KEY (GitHub App with contents, pull_requests, workflows on this repo).
-      - name: Check automerge app configuration
+      # Uses existing secrets.PERSONAL_ACCESS_TOKEN (workflow scope) like bump_version.yml.
+      - name: Check merge token configuration
         id: automerge-config
         env:
-          AUTOMERGE_APP_ID: ${{ vars.AUTOMERGE_APP_ID }}
-          AUTOMERGE_APP_PRIVATE_KEY: ${{ secrets.AUTOMERGE_APP_PRIVATE_KEY }}
+          PERSONAL_ACCESS_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
         run: |
           set -euo pipefail
-          if [[ -z "${AUTOMERGE_APP_ID}" || -z "${AUTOMERGE_APP_PRIVATE_KEY}" ]]; then
+          if [[ -z "${PERSONAL_ACCESS_TOKEN}" ]]; then
             echo "configured=false" >> "${GITHUB_OUTPUT}"
-            echo "::notice::AUTOMERGE_APP_ID and/or AUTOMERGE_APP_PRIVATE_KEY not set; skipping automerge (see renovate.json)."
+            echo "::notice::PERSONAL_ACCESS_TOKEN not set; skipping automerge."
             exit 0
           fi
           echo "configured=true" >> "${GITHUB_OUTPUT}"
 
-      - name: Mint merge token
-        if: steps.automerge-config.outputs.configured == 'true'
-        id: merge-token
-        uses: actions/create-github-app-token@v2
-        with:
-          app-id: ${{ vars.AUTOMERGE_APP_ID }}
-          private-key: ${{ secrets.AUTOMERGE_APP_PRIVATE_KEY }}
-          permission-contents: write
-          permission-pull-requests: write
-          permission-workflows: write
-          permission-checks: read
-          permission-statuses: read
-
       - name: Re-validate gates and merge
         if: steps.automerge-config.outputs.configured == 'true'
         env:
-          GH_TOKEN: ${{ steps.merge-token.outputs.token }}
+          GH_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
           PR_NUMBER: ${{ inputs.pr_number }}
           HEAD_SHA: ${{ inputs.head_sha }}
         run: |

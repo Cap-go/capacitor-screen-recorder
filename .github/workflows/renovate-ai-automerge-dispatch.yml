@@ -75,7 +75,6 @@ jobs:
           PR_NUMBER: ${{ steps.pr.outputs.number }}
           HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
           GH_TOKEN: ${{ github.token }}
-          AUTOMERGE_APP_ID: ${{ vars.AUTOMERGE_APP_ID }}
         run: |
           set -euo pipefail
           bash .github/scripts/renovate-automerge-dispatch-step.sh
@@ -93,16 +92,15 @@ jobs:
       - name: Scan eligible Renovate PRs and dispatch merge
         env:
           GH_TOKEN: ${{ github.token }}
-          AUTOMERGE_APP_ID: ${{ vars.AUTOMERGE_APP_ID }}
         run: |
           set -euo pipefail
           mapfile -t PR_ROWS < <(
-            gh pr list --repo "${GITHUB_REPOSITORY}" --state open --label github-actions \
+            gh pr list --repo "${GITHUB_REPOSITORY}" --state open --label github-actions-major \
               --json number,headRefOid,author \
               --jq '.[] | select(.author.login == "renovate[bot]" or .author.login == "app/renovate") | [.number, .headRefOid] | @tsv'
           )
           if [[ ${#PR_ROWS[@]} -eq 0 ]]; then
-            echo "::notice::No open Renovate github-actions PRs to scan"
+            echo "::notice::No open Renovate github-actions-major PRs to scan"
             exit 0
           fi
           for row in "${PR_ROWS[@]}"; do

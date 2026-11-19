@@ -80,8 +80,8 @@ if [[ ${#CHANGED_FILES[@]} -eq 0 ]]; then
   skip "PR #${PR_NUMBER} has no changed files"
 fi
 
-if [[ ",${PR_LABELS}," != *",github-actions,"* ]]; then
-  skip "PR #${PR_NUMBER} is missing the github-actions label"
+if [[ ",${PR_LABELS}," != *",github-actions-major,"* ]]; then
+  skip "PR #${PR_NUMBER} is missing the github-actions-major label"
 fi
 
 SCOPE_OK=true
@@ -341,4 +341,4 @@ log "Gates passed for PR #${PR_NUMBER}; merging"
 gh pr merge "${PR_NUMBER}" --repo "${REPO}" --squash --delete-branch \
   --match-head-commit "${HEAD_SHA}"
 gh pr comment "${PR_NUMBER}" --repo "${REPO}" \
-  --body "AI review approved + CI green → auto-merged"
+  --body "AI review approved + CI green -> auto-merged"

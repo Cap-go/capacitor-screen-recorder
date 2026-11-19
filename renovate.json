@@ -28,7 +28,7 @@
       "enabled": false
     },
     {
-      "description": "GitHub Actions major bumps: Renovate opens PRs; renovate-ai-automerge merges after CodeRabbit APPROVED + CI green. Requires repo variable AUTOMERGE_APP_ID and secret AUTOMERGE_APP_PRIVATE_KEY for renovate-ai-automerge-merge.yml.",
+      "description": "GitHub Actions major bumps only: label github-actions-major gates renovate-ai-automerge (workflow files only). Merges after CodeRabbit APPROVED + CI green via secrets.PERSONAL_ACCESS_TOKEN on renovate-ai-automerge-merge.yml.",
       "matchManagers": [
         "github-actions"
       ],
@@ -37,7 +37,7 @@
       ],
       "automerge": false,
       "labels": [
-        "github-actions",
+        "github-actions-major",
         "dependencies"
       ]
     }

@@ -5,7 +5,7 @@
 #   PR_NUMBER - Pull request number.
 #   HEAD_SHA - Expected head commit SHA.
 #   GITHUB_REPOSITORY - owner/repo for gh calls.
-#   AUTOMERGE_APP_ID - When unset, merge dispatch is skipped.
+#   Merge workflow on main uses secrets.PERSONAL_ACCESS_TOKEN when configured.
 set -euo pipefail
 
 PR_NUMBER="${PR_NUMBER:?}"
@@ -24,10 +24,6 @@ if [[ "${gate_result}" -eq 2 ]]; then
 fi
 if [[ "${gate_result}" -ne 0 ]]; then
   exit "${gate_result}"
-fi
-if [[ -z "${AUTOMERGE_APP_ID:-}" ]]; then
-  echo "::notice::Skipping merge dispatch: set repository variable AUTOMERGE_APP_ID and secret AUTOMERGE_APP_PRIVATE_KEY (see renovate.json packageRules description)."
-  exit 0
 fi
 gh workflow run renovate-ai-automerge-merge.yml \
   --repo "${REPO}" \
