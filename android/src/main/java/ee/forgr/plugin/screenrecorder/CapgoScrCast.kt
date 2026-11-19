@@ -16,6 +16,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.result.ActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import ee.forgr.plugin.screenrecorder.RecordingServiceStartPolicy
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import dev.bmcreations.scrcast.config.Options
 import dev.bmcreations.scrcast.internal.recorder.Action
@@ -248,7 +249,11 @@ class CapgoScrCast private constructor(
             )
             receiverRegistered = true
             activity.bindService(session, connection, Context.BIND_AUTO_CREATE)
-            activity.startService(session)
+            if (RecordingServiceStartPolicy.shouldUseStartForegroundService()) {
+                ContextCompat.startForegroundService(activity, session)
+            } else {
+                activity.startService(session)
+            }
         } catch (error: Exception) {
             Log.e("CapgoScreenRecorder", "Failed to start screen recording service", error)
             rollbackFailedStart(error)
