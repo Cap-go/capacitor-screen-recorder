@@ -1,6 +1,9 @@
 package ee.forgr.plugin.screenrecorder
 
 import android.media.MediaRecorder
+import dev.bmcreations.scrcast.config.Options
+import dev.bmcreations.scrcast.config.StorageConfig
+import java.io.File
 import java.io.IOException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -10,18 +13,21 @@ import org.mockito.Mockito.mock
 import org.mockito.Mockito.verify
 
 class VideoSizeResolverTest {
+    private fun autoSizeOptions(): Options {
+        val tmpDir = File(System.getProperty("java.io.tmpdir"))
+        return Options(storage = StorageConfig(directory = tmpDir))
+    }
+
     @Test
     fun applyTo_preservesLandscapeDisplaySizeWithin1080pCap() {
-        val options = dev.bmcreations.scrcast.config.Options()
-        val resolved = VideoSizeResolver.applyTo(options, 1280, 720)
+        val resolved = VideoSizeResolver.applyTo(autoSizeOptions(), 1280, 720)
         assertEquals(1280, resolved.video.width)
         assertEquals(720, resolved.video.height)
     }
 
     @Test
     fun applyTo_scalesOversizedDisplayDownTo1080p() {
-        val options = dev.bmcreations.scrcast.config.Options()
-        val resolved = VideoSizeResolver.applyTo(options, 2560, 1440)
+        val resolved = VideoSizeResolver.applyTo(autoSizeOptions(), 2560, 1440)
         assertEquals(1920, resolved.video.width)
         assertEquals(1080, resolved.video.height)
     }
