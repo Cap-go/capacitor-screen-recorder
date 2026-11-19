@@ -3,15 +3,14 @@ package ee.forgr.plugin.screenrecorder
 import android.content.Context
 import android.os.Build
 import android.view.WindowManager
-import androidx.annotation.RequiresApi
+import java.lang.reflect.Proxy
+import java.util.concurrent.Executor
 
 class ScreenCaptureDetector(context: Context) {
     private val appContext = context.applicationContext
     private var isCaptured = false
     private var callbackRegistered = false
-
-    @RequiresApi(35)
-    private var screenRecordingCallback: WindowManager.ScreenRecordingCallback? = null
+    private var registeredCallback: Any? = null
 
     fun isScreenCaptured(): Boolean {
         return isCaptured
@@ -24,37 +23,68 @@ class ScreenCaptureDetector(context: Context) {
         if (callbackRegistered) {
             return
         }
-        registerCallback(onCapturedChanged)
+        registerCallbackReflection(onCapturedChanged)
     }
 
     fun stop() {
-        if (!ScreenCaptureAvailability.supportsRecordingCallbacks()) {
+        if (!callbackRegistered || Build.VERSION.SDK_INT < 35) {
             return
         }
-        if (Build.VERSION.SDK_INT >= 35) {
-            unregisterCallback()
+        unregisterCallbackReflection()
+    }
+
+    private fun registerCallbackReflection(onCapturedChanged: (Boolean) -> Unit) {
+        if (Build.VERSION.SDK_INT < 35) {
+            return
+        }
+        runCatching {
+            val windowManager = appContext.getSystemService(WindowManager::class.java)
+            val callbackClass = Class.forName("android.view.WindowManager\$ScreenRecordingCallback")
+            val recordingStateClass = callbackClass.declaringClass
+            val recordingStateRecording = recordingStateClass
+                .getField("SCREEN_RECORDING_STATE_RECORDING")
+                .getInt(null)
+            val handler = java.lang.reflect.InvocationHandler { _, method, args ->
+                if (method.name == "onScreenRecordingStateChanged" && args != null && args.isNotEmpty()) {
+                    val state = args[0] as Int
+                    val captured = state == recordingStateRecording
+                    isCaptured = captured
+                    onCapturedChanged(captured)
+                }
+                null
+            }
+            val callback = Proxy.newProxyInstance(
+                callbackClass.classLoader,
+                arrayOf(callbackClass),
+                handler,
+            )
+            val executor = appContext.mainExecutor
+            val addMethod = windowManager.javaClass.getMethod(
+                "addScreenRecordingCallback",
+                Executor::class.java,
+                callbackClass,
+            )
+            addMethod.invoke(windowManager, executor, callback)
+            registeredCallback = callback
+            callbackRegistered = true
+        }.onFailure {
+            callbackRegistered = false
+            registeredCallback = null
         }
     }
 
-    @RequiresApi(35)
-    private fun registerCallback(onCapturedChanged: (Boolean) -> Unit) {
-        val windowManager = appContext.getSystemService(WindowManager::class.java)
-        val callback = WindowManager.ScreenRecordingCallback { state ->
-            val captured = state == WindowManager.SCREEN_RECORDING_STATE_RECORDING
-            isCaptured = captured
-            onCapturedChanged(captured)
+  private fun unregisterCallbackReflection() {
+        val callback = registeredCallback ?: return
+        runCatching {
+            val windowManager = appContext.getSystemService(WindowManager::class.java)
+            val callbackClass = Class.forName("android.view.WindowManager\$ScreenRecordingCallback")
+            val removeMethod = windowManager.javaClass.getMethod(
+                "removeScreenRecordingCallback",
+                callbackClass,
+            )
+            removeMethod.invoke(windowManager, callback)
         }
-        screenRecordingCallback = callback
-        windowManager.addScreenRecordingCallback(appContext.mainExecutor, callback)
-        callbackRegistered = true
-    }
-
-    @RequiresApi(35)
-    private fun unregisterCallback() {
-        val callback = screenRecordingCallback ?: return
-        val windowManager = appContext.getSystemService(WindowManager::class.java)
-        windowManager.removeScreenRecordingCallback(callback)
-        screenRecordingCallback = null
+        registeredCallback = null
         callbackRegistered = false
         isCaptured = false
     }
