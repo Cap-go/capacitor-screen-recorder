@@ -208,16 +208,6 @@ class CapgoScrCast private constructor(
         stopRequested = false
     }
 
-    private fun resolveVideoSize(options: Options, rotation: Int? = null): Options {
-        val displayRotation = rotation ?: activity.windowManager.defaultDisplay.rotation
-        return VideoSizeResolver.applyTo(
-            options,
-            metrics.widthPixels,
-            metrics.heightPixels,
-            displayRotation,
-        )
-    }
-
     private fun resolveOutputFile(): File? {
         val dir = options.storage.mediaStorageLocation ?: return null
         return File("${dir.path}${File.separator}${options.storage.fileNameFormatter()}.$fileExtension")
