@@ -31,8 +31,8 @@ We build, improve and fix our plugins with heavy use of AI, so issues usually ge
 ## Key features
 
 - **Start**: `start()` begins recording after the system consent prompt.
-- **Stop**: `stop()` ends the recording.
-- **Audio**: set `recordAudio` to capture sound with the video.
+- **Stop**: `stop()` ends the recording and returns `{ url }` for the saved file when available.
+- **Audio**: set `recordAudio: true` on `start()` to capture microphone audio with the video (Android and iOS).
 - **Native capture**: ReplayKit on iOS, saved to the Photos library, and MediaProjection on Android.
 - **Platforms**: iOS and Android. Not available on web.
 
@@ -171,7 +171,7 @@ starts immediately after permission is granted.
 ### stop()
 
 ```typescript
-stop() => Promise<void>
+stop() => Promise<ScreenRecorderStopResult>
 ```
 
 Stop the current screen recording.
@@ -179,6 +179,8 @@ Stop the current screen recording.
 Stops the active screen recording and saves the video to the device's
 camera roll or gallery. On iOS, the system will show a preview of the
 recording. On Android, the video is saved directly to the gallery.
+
+**Returns:** <code>Promise&lt;<a href="#screenrecorderstopresult">ScreenRecorderStopResult</a>&gt;</code>
 
 **Since:** 1.0.0
 
@@ -246,6 +248,15 @@ Options for {@link ScreenRecorderPlugin.start}.
 | **`format`**      | <code><a href="#screenrecordervideoformat">ScreenRecorderVideoFormat</a> \| 'video/mp4' \| 'video/quicktime'</code> | Video container format for the saved recording. Accepts `mp4`, `mov`, or MIME types `video/mp4` and `video/quicktime`. iOS supports both `mp4` and `mov`. Android records MPEG-4 (`.mp4`) regardless of this value. | <code>'mp4'</code> | 8.3.0 |
 
 
+#### ScreenRecorderStopResult
+
+Result from {@link ScreenRecorderPlugin.stop}.
+
+| Prop      | Type                | Description                                                                               | Since |
+| --------- | ------------------- | ----------------------------------------------------------------------------------------- | ----- |
+| **`url`** | <code>string</code> | Local URI of the saved recording (`file://` on Android, file path on iOS when available). | 8.5.0 |
+
+
 #### PluginListenerHandle
 
 | Prop         | Type                                      |
@@ -254,13 +265,6 @@ Options for {@link ScreenRecorderPlugin.start}.
 
 
 #### ScreenRecorderStoppedEvent
-
-Payload for the `onStopped` event.
-
-Fired when a recording ends without {@link ScreenRecorderPlugin.stop} being
-called: the user stopped capture from the system UI (Android "Stop sharing"),
-the recorder hit a limit (max duration or max file size), or the system
-interrupted capture (iOS, for example an incoming call).
 
 | Prop        | Type                | Description                                                                                                        | Since |
 | ----------- | ------------------- | ------------------------------------------------------------------------------------------------------------------ | ----- |

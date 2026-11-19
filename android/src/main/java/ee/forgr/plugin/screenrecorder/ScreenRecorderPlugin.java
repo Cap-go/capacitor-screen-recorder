@@ -105,15 +105,47 @@ public class ScreenRecorderPlugin extends Plugin {
     }
 
     @PluginMethod
-    public void stop(PluginCall call) {
+    public void stop(final PluginCall call) {
         try {
             final CapgoScrCast recorder = activeRecorder != null ? activeRecorder : pendingRecorder;
-            if (recorder != null) {
-                recorder.stopRecording();
+            if (recorder == null) {
+                final JSObject ret = new JSObject();
+                ret.put("url", "");
+                call.resolve(ret);
+                return;
             }
-            pendingRecorder = null;
-            activeRecorder = null;
-            call.resolve();
+            call.setKeepAlive(true);
+            final CapgoScrCast targetRecorder = recorder;
+            targetRecorder.stopRecording(
+                new CapgoScrCast.StopListener() {
+                    @Override
+                    public void onStopped(final String path) {
+                        if (activeRecorder == targetRecorder) {
+                            activeRecorder = null;
+                        }
+                        if (pendingRecorder == targetRecorder) {
+                            pendingRecorder = null;
+                        }
+                        final JSObject ret = new JSObject();
+                        ret.put("url", RecordingStopUrl.fromAbsolutePath(path));
+                        call.resolve(ret);
+                        call.release(bridge);
+                    }
+
+                    @Override
+                    public void onFailed(final Throwable error) {
+                        if (activeRecorder == targetRecorder) {
+                            activeRecorder = null;
+                        }
+                        if (pendingRecorder == targetRecorder) {
+                            pendingRecorder = null;
+                        }
+                        final Exception exception = error instanceof Exception ? (Exception) error : new Exception(error);
+                        call.reject("Could not stop screen recording", exception);
+                        call.release(bridge);
+                    }
+                }
+            );
         } catch (final Exception e) {
             call.reject("Could not stop screen recording", e);
         }

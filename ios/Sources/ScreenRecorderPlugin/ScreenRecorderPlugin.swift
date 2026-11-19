@@ -18,6 +18,7 @@ public class ScreenRecorderPlugin: CAPPlugin, CAPBridgedPlugin {
     private let implementation = ScreenRecorder()
 
     override public func load() {
+        implementation.preserveOutputFileForCaller = true
         implementation.onExternalStop = { [weak self] url, error in
             guard let self = self else { return }
             var data: [String: Any] = ["url": url?.absoluteString ?? ""]
@@ -42,12 +43,14 @@ public class ScreenRecorderPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func stop(_ call: CAPPluginCall) {
-        implementation.stoprecording(handler: { error in
+        implementation.stoprecording(handler: { error, outputURL in
             if let error = error {
                 debugPrint("Error when stop recording \(error)")
                 call.reject("Cannot stop recording")
             } else {
-                call.resolve()
+                call.resolve([
+                    "url": outputURL?.absoluteString ?? "",
+                ])
             }
         })
     }

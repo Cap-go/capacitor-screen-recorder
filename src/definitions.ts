@@ -10,6 +10,20 @@ import type { PluginListenerHandle } from '@capacitor/core';
  *
  * @since 8.4.0
  */
+/**
+ * Result from {@link ScreenRecorderPlugin.stop}.
+ *
+ * @since 8.5.0
+ */
+export interface ScreenRecorderStopResult {
+  /**
+   * Local URI of the saved recording (`file://` on Android, file path on iOS when available).
+   *
+   * @since 8.5.0
+   */
+  url: string;
+}
+
 export interface ScreenRecorderStoppedEvent {
   /**
    * Local URI of the finished recording (`file://` on Android).
@@ -103,16 +117,18 @@ export interface ScreenRecorderPlugin {
    * camera roll or gallery. On iOS, the system will show a preview of the
    * recording. On Android, the video is saved directly to the gallery.
    *
-   * @returns Promise that resolves when recording stops and the video is saved
+   * @returns Promise that resolves with the local recording URI when available
    * @throws Error if stopping the recording fails or no recording is active
    * @since 1.0.0
    * @example
    * ```typescript
-   * await ScreenRecorder.stop();
-   * console.log('Recording saved to gallery');
+   * const { url } = await ScreenRecorder.stop();
+   * if (url) {
+   *   await uploadRecording(url);
+   * }
    * ```
    */
-  stop(): Promise<void>;
+  stop(): Promise<ScreenRecorderStopResult>;
 
   /**
    * Listen for recordings that ended without {@link stop} being called.
