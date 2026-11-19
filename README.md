@@ -34,6 +34,7 @@ We build, improve and fix our plugins with heavy use of AI, so issues usually ge
 - **Stop**: `stop()` ends the recording.
 - **Audio**: set `recordAudio` to capture sound with the video.
 - **Native capture**: ReplayKit on iOS, saved to the Photos library, and MediaProjection on Android.
+- **Capture detection**: `getCaptureState()` and `captureStateChanged` when the OS records the screen (iOS; Android 15+).
 - **Platforms**: iOS and Android. Not available on web.
 
 ## Documentation
@@ -133,6 +134,8 @@ No configuration required for this plugin.
 * [`start(...)`](#start)
 * [`stop()`](#stop)
 * [`addListener('onStopped', ...)`](#addlisteneronstopped-)
+* [`getCaptureState()`](#getcapturestate)
+* [`addListener('captureStateChanged', ...)`](#addlistenercapturestatechanged-)
 * [`removeAllListeners()`](#removealllisteners)
 * [`getPluginVersion()`](#getpluginversion)
 * [Interfaces](#interfaces)
@@ -205,6 +208,40 @@ Listen for recordings that ended without {@link stop} being called.
 --------------------
 
 
+### getCaptureState()
+
+```typescript
+getCaptureState() => Promise<ScreenCaptureState>
+```
+
+Read whether the OS is currently capturing the device screen.
+
+iOS uses `UIScreen.isCaptured`. Android 15+ (API 35) uses
+`WindowManager` screen recording callbacks; older Android returns `false`.
+
+**Returns:** <code>Promise&lt;<a href="#screencapturestate">ScreenCaptureState</a>&gt;</code>
+
+**Since:** 8.5.0
+
+--------------------
+
+
+### addListener('captureStateChanged', ...)
+
+```typescript
+addListener(eventName: 'captureStateChanged', listenerFunc: (event: ScreenCaptureStateChangeEvent) => void) => Promise<PluginListenerHandle>
+```
+
+| Param              | Type                                                                                                        |
+| ------------------ | ----------------------------------------------------------------------------------------------------------- |
+| **`eventName`**    | <code>'captureStateChanged'</code>                                                                          |
+| **`listenerFunc`** | <code>(event: <a href="#screencapturestatechangeevent">ScreenCaptureStateChangeEvent</a>) =&gt; void</code> |
+
+**Returns:** <code>Promise&lt;<a href="#pluginlistenerhandle">PluginListenerHandle</a>&gt;</code>
+
+--------------------
+
+
 ### removeAllListeners()
 
 ```typescript
@@ -266,6 +303,24 @@ interrupted capture (iOS, for example an incoming call).
 | ----------- | ------------------- | ------------------------------------------------------------------------------------------------------------------ | ----- |
 | **`url`**   | <code>string</code> | Local URI of the finished recording (`file://` on Android). Empty string when the file path could not be resolved. | 8.4.0 |
 | **`error`** | <code>string</code> | Error message when the recording ended with a failure.                                                             | 8.4.0 |
+
+
+#### ScreenCaptureState
+
+Whether the system is currently recording or mirroring the device screen.
+
+| Prop             | Type                 | Description                                                                  | Since |
+| ---------------- | -------------------- | ---------------------------------------------------------------------------- | ----- |
+| **`isCaptured`** | <code>boolean</code> | `true` when OS-level screen capture is active (ReplayKit / system recorder). | 8.5.0 |
+
+
+#### ScreenCaptureStateChangeEvent
+
+Payload for the `captureStateChanged` event.
+
+| Prop             | Type                 | Since |
+| ---------------- | -------------------- | ----- |
+| **`isCaptured`** | <code>boolean</code> | 8.5.0 |
 
 
 ### Type Aliases

@@ -18,9 +18,17 @@ public class ScreenRecorderPlugin extends Plugin {
     private CapgoScrCast audioRecorder;
     private CapgoScrCast pendingRecorder = null;
     private CapgoScrCast activeRecorder = null;
+    private ScreenCaptureDetector captureDetector;
 
     @Override
     public void load() {
+        captureDetector = new ScreenCaptureDetector(getContext());
+        captureDetector.start((captured) -> {
+            final JSObject data = new JSObject();
+            data.put("isCaptured", captured);
+            notifyListeners("captureStateChanged", data);
+            return kotlin.Unit.INSTANCE;
+        });
         videoRecorder = CapgoScrCast.use(this.bridge.getActivity(), false);
         audioRecorder = CapgoScrCast.use(this.bridge.getActivity(), true);
         final Options options = new Options();
@@ -117,6 +125,21 @@ public class ScreenRecorderPlugin extends Plugin {
         } catch (final Exception e) {
             call.reject("Could not stop screen recording", e);
         }
+    }
+
+    @Override
+    protected void handleOnDestroy() {
+        if (captureDetector != null) {
+            captureDetector.stop();
+        }
+        super.handleOnDestroy();
+    }
+
+    @PluginMethod
+    public void getCaptureState(final PluginCall call) {
+        final JSObject ret = new JSObject();
+        ret.put("isCaptured", captureDetector != null && captureDetector.isScreenCaptured());
+        call.resolve(ret);
     }
 
     @PluginMethod

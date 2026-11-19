@@ -35,6 +35,32 @@ export interface ScreenRecorderStoppedEvent {
 export type ScreenRecorderVideoFormat = 'mp4' | 'mov';
 
 /**
+ * Whether the system is currently recording or mirroring the device screen.
+ *
+ * @since 8.5.0
+ */
+export interface ScreenCaptureState {
+  /**
+   * `true` when OS-level screen capture is active (ReplayKit / system recorder).
+   *
+   * @since 8.5.0
+   */
+  isCaptured: boolean;
+}
+
+/**
+ * Payload for the `captureStateChanged` event.
+ *
+ * @since 8.5.0
+ */
+export interface ScreenCaptureStateChangeEvent {
+  /**
+   * @since 8.5.0
+   */
+  isCaptured: boolean;
+}
+
+/**
  * Options for {@link ScreenRecorderPlugin.start}.
  *
  * @since 8.3.0
@@ -125,6 +151,21 @@ export interface ScreenRecorderPlugin {
   addListener(
     eventName: 'onStopped',
     listenerFunc: (event: ScreenRecorderStoppedEvent) => void,
+  ): Promise<PluginListenerHandle>;
+
+  /**
+   * Read whether the OS is currently capturing the device screen.
+   *
+   * iOS uses `UIScreen.isCaptured`. Android 15+ (API 35) uses
+   * `WindowManager` screen recording callbacks; older Android returns `false`.
+   *
+   * @since 8.5.0
+   */
+  getCaptureState(): Promise<ScreenCaptureState>;
+
+  addListener(
+    eventName: 'captureStateChanged',
+    listenerFunc: (event: ScreenCaptureStateChangeEvent) => void,
   ): Promise<PluginListenerHandle>;
 
   /**
