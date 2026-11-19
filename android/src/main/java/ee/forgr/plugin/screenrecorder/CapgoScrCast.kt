@@ -149,15 +149,13 @@ class CapgoScrCast private constructor(
     }
 
     fun updateOptions(options: Options) {
-        this.options = resolveVideoSize(options)
+        this.options = options
     }
 
     fun updateVideoFormat(format: String?) {
         val resolved = VideoFormatResolver.resolve(format)
         fileExtension = resolved.extension
-        options = resolveVideoSize(
-            options.copy(storage = options.storage.copy(outputFormat = resolved.outputFormat)),
-        )
+        options = options.copy(storage = options.storage.copy(outputFormat = resolved.outputFormat))
     }
 
     fun record(listener: StartListener): Boolean {
@@ -210,10 +208,6 @@ class CapgoScrCast private constructor(
         stopRequested = false
     }
 
-    private fun resolveVideoSize(options: Options): Options {
-        return VideoSizeResolver.applyTo(options, metrics.widthPixels, metrics.heightPixels)
-    }
-
     private fun resolveOutputFile(): File? {
         val dir = options.storage.mediaStorageLocation ?: return null
         return File("${dir.path}${File.separator}${options.storage.fileNameFormatter()}.$fileExtension")
@@ -226,13 +220,16 @@ class CapgoScrCast private constructor(
         }
         sessionGeneration += 1
         outputFile = file
+        val displayRotation = activity.windowManager.defaultDisplay.rotation
+        val (windowWidth, windowHeight) = RecordingWindowMetrics.currentSize(activity)
+        val sessionOptions = VideoSizeResolver.applyTo(options, windowWidth, windowHeight)
         val session = Intent(activity, CapgoRecorderService::class.java).apply {
             putExtra("code", result.resultCode)
             putExtra("data", result.data)
-            putExtra("options", options)
+            putExtra("options", sessionOptions)
             putExtra("outputFile", file.absolutePath)
             putExtra("dpi", dpi)
-            putExtra("rotation", activity.windowManager.defaultDisplay.rotation)
+            putExtra("rotation", displayRotation)
             putExtra("recordAudio", recordAudio)
             putExtra(EXTRA_SESSION_GENERATION, sessionGeneration)
         }
